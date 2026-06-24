@@ -10,8 +10,8 @@ SHEETS_CONFIG_FILE = "sheets.json"
 WORKSHEET_NAME     = "TendersData"
 
 # ── Scraping limits (set to None for unlimited) ─────────────────────────────
-MAX_ORGANIZATIONS_TO_PROCESS = None
-MAX_TENDERS_PER_ORG          = None
+MAX_ORGANIZATIONS_TO_PROCESS = 5
+MAX_TENDERS_PER_ORG          = 10
 
 # ── Concurrency ─────────────────────────────────────────────────────────────
 MAX_CONCURRENT_DRIVERS = 2   # how many Chrome instances to run in parallel

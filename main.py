@@ -1,15 +1,10 @@
 """
 main.py  –  Orchestrator
-─────────────────────────
-• Loads all enabled sources from config.SOURCES
-• Spins up one Chrome driver per source (parallel via ThreadPoolExecutor)
-• Merges all results and writes to Google Sheets
 
-Speed gains vs. original:
-  1. Parallel scraping across sources (ThreadPoolExecutor)
-  2. Reduced sleep times (configurable per-source via timing constants in each scraper)
-  3. driver.back() replaced with direct URL navigation (no extra page load)
-  4. Pagination handled inside fetch_tender_list (no re-entry)
+Runs all enabled sources. Each source scraper:
+  - Resumes from last saved org index (survives GitHub Actions 1hr kill)
+  - Writes to Google Sheets after every org (nothing lost on timeout)
+  - Skips orgs where no new tenders exist (incremental runs are fast)
 """
 
 import importlib
@@ -23,18 +18,16 @@ from core.config import (
     SOURCES,
 )
 from core.driver import get_driver
-from output.sheets_writer import write_tenders
 
 
 def _load_scraper_class(dotted_path: str):
-    """Import a scraper class by its dotted module path."""
     module_path, class_name = dotted_path.rsplit(".", 1)
     module = importlib.import_module(module_path)
     return getattr(module, class_name)
 
 
-def _run_source(source: dict) -> list[dict]:
-    """Instantiate a driver + scraper for one source and run it."""
+def _run_source(source: dict) -> int:
+    """Run one source — returns count of new tenders written."""
     name = source["name"]
     print(f"\n{'='*60}")
     print(f"  Starting: {name}")
@@ -50,7 +43,7 @@ def _run_source(source: dict) -> list[dict]:
         )
     except Exception as exc:
         print(f"[{name}] FATAL: {exc}")
-        return []
+        return 0
     finally:
         try:
             driver.quit()
@@ -67,26 +60,21 @@ def main():
 
     print(f"Running {len(enabled)} source(s) with up to {MAX_CONCURRENT_DRIVERS} parallel drivers")
 
-    all_tenders: list[dict] = []
-
-    # ── parallel execution across sources ───────────────────────────────────
+    total = 0
     with ThreadPoolExecutor(max_workers=MAX_CONCURRENT_DRIVERS) as pool:
         futures = {pool.submit(_run_source, src): src["name"] for src in enabled}
         for future in as_completed(futures):
             src_name = futures[future]
             try:
-                tenders = future.result()
-                print(f"\n✓ {src_name}: {len(tenders)} tenders collected")
-                all_tenders.extend(tenders)
+                count = future.result()
+                print(f"\n✓ {src_name}: {count} new tenders written this run")
+                total += count
             except Exception as exc:
                 print(f"\n✗ {src_name}: unhandled exception – {exc}")
 
     print(f"\n{'='*60}")
-    print(f"  Total tenders collected: {len(all_tenders)}")
+    print(f"  Total new tenders written this run: {total}")
     print(f"{'='*60}")
-
-    write_tenders(all_tenders)
-    print("\nDone.")
 
 
 if __name__ == "__main__":

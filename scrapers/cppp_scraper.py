@@ -1,14 +1,13 @@
 """
 scrapers/cppp_scraper.py
-Handles:  CPPP (eprocure.gov.in) and any NIC/GePNIC state-portal clone
-          that shares the same HTML structure (mptenders.gov.in, etc.)
+Handles CPPP (eprocure.gov.in) and any NIC/GePNIC state-portal clone.
 
-To activate a new NIC portal, add an entry to config.SOURCES with:
-    "scraper": "scrapers.cppp_scraper.CPPPScraper"
-    "base_url": "<portal base URL>"
-No code changes needed.
+Key change: fetch_tender_list_incremental() extracts Tender ID directly
+from the listing row (last [bracketed] value in the Title cell) and stops
+pagination as soon as a known ID is encountered — no wasted detail page loads.
 """
 
+import re
 import time
 from urllib.parse import urljoin
 
@@ -18,17 +17,23 @@ from selenium.webdriver.common.by import By
 from core.base_scraper import BaseScraper
 from core.config import FIXED_HEADERS, NUMERIC_FIELDS
 
+# ── page timing (seconds) ────────────────────────────────────────────────────
+T_ORG_LIST  = 6
+T_ORG_PAGE  = 4
+T_DETAIL    = 4
+T_NEXT_PAGE = 4
 
-# ── page timing constants (seconds) ─────────────────────────────────────────
-T_ORG_LIST    = 6   # wait after loading org-list page
-T_ORG_PAGE    = 4   # wait after loading an org's tender list
-T_DETAIL      = 4   # wait after loading a detail page
-T_BACK        = 2   # wait after driver.back()
-T_NEXT_PAGE   = 4   # wait after clicking Next
+# Tender ID pattern: YYYY_ORGCODE_NUMBER_VERSION  e.g. 2026_DDA_914625_1
+_TENDER_ID_RE = re.compile(r'\d{4}_[A-Z0-9]+_\d+_\d+')
+
+
+def _extract_tender_id(cell_text: str) -> str:
+    """Extract Tender ID from the Title+Ref cell on the listing page."""
+    matches = _TENDER_ID_RE.findall(cell_text)
+    return matches[-1] if matches else ""
 
 
 class CPPPScraper(BaseScraper):
-    """Scraper for the NIC eProcure / CPPP template portals."""
 
     # ── fetch_org_list ───────────────────────────────────────────────────────
 
@@ -45,7 +50,8 @@ class CPPPScraper(BaseScraper):
         if len(rows) < 3:
             rows = [
                 tr for tr in soup.select("table tr")
-                if len(tr.find_all("td")) >= 3 and tr.find_all("td")[1].get_text(strip=True)
+                if len(tr.find_all("td")) >= 3
+                and tr.find_all("td")[1].get_text(strip=True)
             ]
 
         orgs = []
@@ -62,16 +68,26 @@ class CPPPScraper(BaseScraper):
             org_url = urljoin(self.base_url, link_tag["href"])
             orgs.append({"org_name": org_name, "tender_count": tender_count, "org_url": org_url})
 
+        print(f"[{self.name}] Found {len(orgs)} organisations")
         return orgs
 
-    # ── fetch_tender_list ────────────────────────────────────────────────────
+    # ── fetch_tender_list_incremental ────────────────────────────────────────
 
-    def fetch_tender_list(self, org_url: str) -> list[dict]:
+    def fetch_tender_list_incremental(
+        self, org_url: str, known_ids: set[str]
+    ) -> tuple[list[dict], bool]:
+        """
+        Paginate through tender list, stopping as soon as a known Tender ID
+        is encountered. Tenders are listed newest-first so this is safe.
+
+        Returns (new_stubs, hit_known_id).
+        """
         self.driver.get(org_url)
         time.sleep(T_ORG_PAGE)
         self.page_has_captcha()
 
         stubs: list[dict] = []
+        hit_known = False
 
         while True:
             soup = BeautifulSoup(self.driver.page_source, "html.parser")
@@ -87,18 +103,33 @@ class CPPPScraper(BaseScraper):
                 cells = tr.find_all("td")
                 if len(cells) < 6:
                     continue
-                title_cell  = cells[4]
-                title       = title_cell.get_text(strip=True)
-                detail_link = title_cell.find("a")
+
+                title_cell = cells[4]
+                cell_text  = title_cell.get_text(separator=" ", strip=True)
+                tender_id  = _extract_tender_id(cell_text)
+
+                # ── early exit: hit territory we already have ────────────────
+                if tender_id and tender_id in known_ids:
+                    hit_known = True
+                    return stubs, hit_known
+
+                detail_link = title_cell.find("a", href=True)
                 if not detail_link:
                     continue
+
                 href = detail_link["href"]
+                # skip navigation links — real detail pages contain service=direct
                 if "service=direct" not in href:
                     continue
-                detail_url = urljoin(self.base_url, href)
-                stubs.append({"title": title, "detail_url": detail_url})
 
-            # pagination
+                detail_url = urljoin(self.base_url, href)
+                stubs.append({
+                    "title":      cell_text,
+                    "detail_url": detail_url,
+                    "tender_id":  tender_id,
+                })
+
+            # ── pagination ───────────────────────────────────────────────────
             try:
                 next_btn = self.driver.find_element(
                     By.XPATH,
@@ -113,7 +144,7 @@ class CPPPScraper(BaseScraper):
             except Exception:
                 break
 
-        return stubs
+        return stubs, hit_known
 
     # ── fetch_tender_detail ──────────────────────────────────────────────────
 
@@ -129,7 +160,7 @@ class CPPPScraper(BaseScraper):
         ct = self.clean_text
         cn = self.clean_number
 
-        # ── generic table parser (td_caption / td_field) ────────────────────
+        # ── generic td_caption / td_field pairs ─────────────────────────────
         for table in soup.find_all("table", class_="tablebg"):
             for tr in table.find_all("tr"):
                 tds = tr.find_all("td")
@@ -145,27 +176,26 @@ class CPPPScraper(BaseScraper):
                         self._map_caption(data, caption, val, cn)
                     i += 1
 
-        # ── Work Item Details section ────────────────────────────────────────
+        # ── named sections ───────────────────────────────────────────────────
         self._parse_section(soup, "Work Item Details", data, cn, {
-            "Title":               "Title",
-            "Work Description":    "Work Description",
+            "Title":                 "Title",
+            "Work Description":      "Work Description",
             "NDA/Pre Qualification": "NDA/Pre Qualification",
-            "Tender Value":        ("Tender Value in Rs", "number"),
-            "Product Category":    "Product Category",
-            "Sub category":        "Sub Category",
-            "Bid Validity":        "Bid Validity(Days)",
-            "Period Of Work":      "Period of Work(Days)",
-            "Location":            "Location",
-            "Pre Bid Meeting Place":   "Pre Bid Meeting Place",
-            "Pre Bid Meeting Address": "Pre Bid Meeting Address",
-            "Pre Bid Meeting Date":    "Pre Bid Meeting Date",
-            "Bid Opening Place":       "Bid Opening Place",
+            "Tender Value":          ("Tender Value in Rs", "number"),
+            "Product Category":      "Product Category",
+            "Sub category":          "Sub Category",
+            "Bid Validity":          "Bid Validity(Days)",
+            "Period Of Work":        "Period of Work(Days)",
+            "Location":              "Location",
+            "Pre Bid Meeting Place":    "Pre Bid Meeting Place",
+            "Pre Bid Meeting Address":  "Pre Bid Meeting Address",
+            "Pre Bid Meeting Date":     "Pre Bid Meeting Date",
+            "Bid Opening Place":        "Bid Opening Place",
         })
 
-        # ── Critical Dates section ───────────────────────────────────────────
         self._parse_section(soup, "Critical Dates", data, cn, {
-            "Published Date":                    "Published Date",
-            "Bid Opening Date":                  "Bid Opening Date",
+            "Published Date":                      "Published Date",
+            "Bid Opening Date":                    "Bid Opening Date",
             "Document Download / Sale Start Date": "Document Download / Sale Start Date",
             "Document Download / Sale End Date":   "Document Download / Sale End Date",
             "Clarification Start Date":            "Clarification Start Date",
@@ -174,23 +204,19 @@ class CPPPScraper(BaseScraper):
             "Bid Submission End Date":             "Bid Submission End Date",
         })
 
-        # ── Tender Inviting Authority section ────────────────────────────────
         self._parse_section(soup, "Tender Inviting Authority", data, cn, {
             "Name":    "Tender Inviting Authority Name",
             "Address": "Tender Inviting Authority Address",
         })
 
         filled = sum(1 for v in data.values() if v)
-        print(f"[{self.name}]   extracted {filled}/{len(FIXED_HEADERS)} fields  ← {detail_url[-60:]}")
+        print(f"[{self.name}]   extracted {filled}/{len(FIXED_HEADERS)} fields")
         return data
 
     # ── private helpers ──────────────────────────────────────────────────────
 
     def _map_caption(self, data, caption, val, cn):
-        """Map a generic td_caption/td_field pair to a FIXED_HEADER key."""
         cap_lower = caption.lower()
-
-        # direct overrides first
         if "organisation chain" in cap_lower:
             data["Organization Chain"] = val; return
         if "tender reference number" in cap_lower:
@@ -198,8 +224,7 @@ class CPPPScraper(BaseScraper):
         if "tender id" in cap_lower:
             data["Tender ID"] = val; return
 
-        # fuzzy match against headers
-        for header in FIXED_HEADERS[4:]:   # skip metadata cols
+        for header in FIXED_HEADERS[4:]:
             h_lower = (
                 header.lower()
                 .replace(" in rs", "")
@@ -210,25 +235,19 @@ class CPPPScraper(BaseScraper):
                 data[header] = cn(val) if header in NUMERIC_FIELDS else val
                 return
 
-    def _parse_section(self, soup, section_label: str, data: dict, cn, mapping: dict):
-        """
-        Find a named section table and apply a key→header mapping.
-        mapping values can be a string (header name) or ("header", "number").
-        """
+    def _parse_section(self, soup, section_label, data, cn, mapping):
         anchor = soup.find(string=lambda s: s and section_label in s)
         if not anchor:
             return
         table = anchor.find_parent("table")
         if not table:
             return
-
         for tr in table.find_all("tr"):
             tds = tr.find_all("td")
             if len(tds) < 2:
                 continue
             raw_key = self.clean_text(tds[0].get_text())
             val     = self.clean_text(" ".join(td.get_text() for td in tds[1:]))
-
             for map_key, target in mapping.items():
                 if map_key.lower() in raw_key.lower():
                     if isinstance(target, tuple):

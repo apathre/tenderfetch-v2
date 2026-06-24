@@ -1,16 +1,10 @@
 """
-core/base_scraper.py  –  Abstract base every source scraper must implement.
+core/base_scraper.py
 
-Each concrete scraper only needs to implement:
-    fetch_org_list()    → list[dict]  (org_name, tender_count, org_url)
-    fetch_tender_list() → list[dict]  (title, detail_url)
-    fetch_tender_detail() → dict      (all canonical fields)
-
-The orchestrator (main.py) handles:
-    • driver lifecycle
-    • concurrency
-    • rate-limit / CAPTCHA logging
-    • dedup & sheet writing
+Key changes:
+- scrape() writes to sheet after EACH org (not at the end)
+- Reads run state (last processed org index) at startup → resumes if previous run was killed
+- Saves run state after each org → next run picks up where this one stopped
 """
 
 from abc import ABC, abstractmethod
@@ -23,18 +17,14 @@ from selenium.webdriver.remote.webdriver import WebDriver
 
 
 class BaseScraper(ABC):
-    """
-    All scraper subclasses receive a live driver and a source config dict.
-    They must NOT manage driver lifecycle themselves.
-    """
 
     def __init__(self, driver: WebDriver, source: dict):
-        self.driver  = driver
-        self.source  = source           # from config.SOURCES
+        self.driver   = driver
+        self.source   = source
         self.base_url = source["base_url"]
         self.name     = source["name"]
 
-    # ── helpers available to all scrapers ───────────────────────────────────
+    # ── shared helpers ───────────────────────────────────────────────────────
 
     @staticmethod
     def clean_text(text: str) -> str:
@@ -45,8 +35,7 @@ class BaseScraper(ABC):
     @staticmethod
     def clean_number(text: str) -> str:
         text = BaseScraper.clean_text(text)
-        text = re.sub(r"[^\d.]", "", text)
-        return text
+        return re.sub(r"[^\d.]", "", text)
 
     def now_iso(self) -> str:
         return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
@@ -67,84 +56,120 @@ class BaseScraper(ABC):
         path = os.path.join(os.getcwd(), filename)
         with open(path, "w", encoding="utf-8") as fh:
             fh.write(self.driver.page_source)
-        print(f"[{self.name}] Debug HTML saved → {path}")
+        print(f"[{self.name}] Debug HTML → {path}")
 
     # ── abstract interface ───────────────────────────────────────────────────
 
     @abstractmethod
     def fetch_org_list(self) -> list[dict]:
-        """
-        Navigate to the organisations listing page.
-        Return: [{"org_name": str, "tender_count": str, "org_url": str}, ...]
-        """
         ...
 
     @abstractmethod
-    def fetch_tender_list(self, org_url: str) -> list[dict]:
-        """
-        Navigate to one org's tender listing, handling pagination.
-        Return: [{"title": str, "detail_url": str}, ...]
-        """
+    def fetch_tender_list_incremental(
+        self, org_url: str, known_ids: set[str]
+    ) -> tuple[list[dict], bool]:
         ...
 
     @abstractmethod
     def fetch_tender_detail(self, detail_url: str) -> dict:
-        """
-        Navigate to a single tender detail page.
-        Return a dict keyed by FIXED_HEADERS field names.
-        """
         ...
 
-    # ── public entry point called by the orchestrator ────────────────────────
+    # ── orchestrator entry point ─────────────────────────────────────────────
 
     def scrape(
         self,
-        max_orgs:   Optional[int] = None,
+        max_orgs:    Optional[int] = None,
         max_per_org: Optional[int] = None,
-    ) -> list[dict]:
+    ) -> int:
         """
-        Orchestrate fetch_org_list → fetch_tender_list → fetch_tender_detail
-        and attach metadata (Source Website, Fetch Date) to every record.
+        Returns total count of new tenders written this run.
+        Writes to sheet after every org so nothing is lost if Actions kills the job.
+        Resumes from last saved org index if previous run was interrupted.
         """
-        from core.config import FIXED_HEADERS  # avoid circular at module level
+        from core.config import FIXED_HEADERS
+        from output.sheets_writer import (
+            get_existing_ids,
+            get_run_state,
+            save_run_state,
+            write_tenders_batch,
+        )
 
-        fetch_date = self.now_iso()
-        all_tenders: list[dict] = []
+        fetch_date  = self.now_iso()
+        total_written = 0
 
-        orgs = self.fetch_org_list()
+        # ── load existing IDs once ───────────────────────────────────────────
+        known_ids = get_existing_ids(self.name)
+
+        # ── fetch full org list ──────────────────────────────────────────────
+        all_orgs = self.fetch_org_list()
         if max_orgs:
-            orgs = orgs[:max_orgs]
+            all_orgs = all_orgs[:max_orgs]
 
-        print(f"[{self.name}] {len(orgs)} organisations to process")
+        total_orgs = len(all_orgs)
 
-        for org in orgs:
+        # ── resume from last saved position ─────────────────────────────────
+        last_index, last_name = get_run_state()
+
+        # if last run completed all orgs, reset and start fresh
+        if last_index >= total_orgs:
+            print(f"[{self.name}] Full cycle complete — resetting to org 0")
+            last_index = 0
+
+        start_index = last_index  # resume from here
+        if start_index > 0:
+            print(f"[{self.name}] Resuming from org {start_index}/{total_orgs} ('{last_name}')")
+        else:
+            print(f"[{self.name}] Starting fresh — {total_orgs} organisations")
+
+        # ── main loop ────────────────────────────────────────────────────────
+        for i in range(start_index, total_orgs):
+            org          = all_orgs[i]
             org_name     = org["org_name"]
             tender_count = org["tender_count"]
             org_url      = org["org_url"]
-            print(f"[{self.name}]  → {org_name}  ({tender_count})")
 
             try:
-                tender_stubs = self.fetch_tender_list(org_url)
-                if max_per_org:
-                    tender_stubs = tender_stubs[:max_per_org]
+                stubs, hit_known = self.fetch_tender_list_incremental(org_url, known_ids)
 
-                for stub in tender_stubs:
-                    try:
-                        detail = self.fetch_tender_detail(stub["detail_url"])
-                        record = {h: "" for h in FIXED_HEADERS}
-                        record.update(detail)
-                        record["Organisation"]   = org_name
-                        record["Tender Count"]   = tender_count
-                        record["Source Website"] = self.name
-                        record["Fetch Date"]     = fetch_date
-                        all_tenders.append(record)
-                    except Exception as e:
-                        print(f"[{self.name}]   ✗ detail error: {e}")
-                        continue
+                if not stubs:
+                    status = "up-to-date" if hit_known else "no tenders"
+                    print(f"[{self.name}]  [{i+1}/{total_orgs}] {org_name} — {status}")
+                else:
+                    print(f"[{self.name}]  [{i+1}/{total_orgs}] {org_name} "
+                          f"— {len(stubs)} new tender(s)")
+
+                    org_tenders = []
+                    fetched = 0
+                    for stub in stubs:
+                        if max_per_org and fetched >= max_per_org:
+                            break
+                        try:
+                            detail = self.fetch_tender_detail(stub["detail_url"])
+                            record = {h: "" for h in FIXED_HEADERS}
+                            record.update(detail)
+                            record["Organisation"]   = org_name
+                            record["Tender Count"]   = tender_count
+                            record["Source Website"] = self.name
+                            record["Fetch Date"]     = fetch_date
+                            if not record.get("Tender ID") and stub.get("tender_id"):
+                                record["Tender ID"] = stub["tender_id"]
+                            org_tenders.append(record)
+                            known_ids.add(stub["tender_id"])
+                            fetched += 1
+                        except Exception as e:
+                            print(f"[{self.name}]   ✗ detail error: {e}")
+                            continue
+
+                    # ── WRITE IMMEDIATELY after this org ─────────────────────
+                    write_tenders_batch(org_tenders, known_ids)
+                    total_written += len(org_tenders)
 
             except Exception as e:
                 print(f"[{self.name}]  ✗ org error ({org_name}): {e}")
-                continue
+                # still save state so we skip this broken org next time
+            
+            # ── save progress after every org ────────────────────────────────
+            save_run_state(i + 1, org_name, fetch_date)
 
-        print(f"[{self.name}] Collected {len(all_tenders)} tenders")
-        return all_tenders
+        print(f"[{self.name}] Run complete — {total_written} new tenders written")
+        return total_written
