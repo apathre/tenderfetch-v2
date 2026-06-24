@@ -119,11 +119,9 @@ def get_existing_ids(source_name: str) -> set[str]:
         return set()
 
 
-def write_tenders_batch(tenders: list[dict], known_ids: set[str]) -> None:
+def write_tenders_batch(tenders: list[dict]) -> None:
     """
-    Append a batch of tenders (typically one org's worth) immediately.
-    Skips any whose Tender ID is already in known_ids.
-    Updates known_ids in-place so caller stays in sync.
+    
     """
     if not tenders:
         return
