@@ -161,7 +161,7 @@ class BaseScraper(ABC):
                             continue
 
                     # ── WRITE IMMEDIATELY after this org ─────────────────────
-                    write_tenders_batch(org_tenders, known_ids)
+                    write_tenders_batch(org_tenders)
                     total_written += len(org_tenders)
 
             except Exception as e:

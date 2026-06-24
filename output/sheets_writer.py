@@ -129,18 +129,17 @@ def write_tenders_batch(tenders: list[dict], known_ids: set[str]) -> None:
         return
 
     ws = _get_worksheet()
-    new_rows = []
-
-    for t in tenders:
-        tid = t.get("Tender ID", "").strip()
-        if not tid or tid in known_ids:
-            continue
-        new_rows.append([t.get(h, "") for h in FIXED_HEADERS])
-        known_ids.add(tid)
-
+    new_rows = [
+        [t.get(h, "") for h in FIXED_HEADERS]
+        for t in tenders
+        if t.get("Tender ID", "").strip()
+    ]
+    
     if new_rows:
-        ws.append_rows(new_rows, value_input_option="USER_ENTERED")
+        ws.append_rows(new_rows)
         print(f"[Sheets] ✓ Written {len(new_rows)} tender(s) to sheet")
+    else:
+        print(f"[Sheets] No rows to write — all missing Tender ID")
 
 
 def get_run_state() -> tuple[int, str]:
