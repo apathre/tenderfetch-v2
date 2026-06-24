@@ -92,7 +92,10 @@ class CPPPScraper(BaseScraper):
                 detail_link = title_cell.find("a")
                 if not detail_link:
                     continue
-                detail_url = urljoin(self.base_url, detail_link["href"])
+                href = detail_link["href"]
+                if "service=direct" not in href:
+                    continue
+                detail_url = urljoin(self.base_url, href)
                 stubs.append({"title": title, "detail_url": detail_url})
 
             # pagination
