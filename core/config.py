@@ -90,7 +90,7 @@ SOURCES = [
         "name":     "CPPP / eProcure (Central)",
         "base_url": "https://eprocure.gov.in/eprocure/app",
         "scraper":  "scrapers.cppp_scraper.CPPPScraper",
-        "sheet_tab": "TendersData_CPPP",
+        "sheet_tab": "TendersData",   # existing tab with 12,000+ already-scraped rows — keep as-is, do NOT rename to TendersData_CPPP
         "enabled":  True,
     },
     {
