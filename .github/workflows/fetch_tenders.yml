@@ -85,7 +85,8 @@ jobs:
       - name: Write sheets.json from secret
         env:
           SHEET_URL: ${{ secrets.SHEET_URL }}
-        run: python -c "import json, os; json.dump({'SHEET_URL': os.environ['SHEET_URL']}, open('sheets.json', 'w'))"
+        run: |
+          python -c "import json, os; json.dump({'SHEET_URL': os.environ['SHEET_URL']}, open('sheets.json', 'w'))"
 
       - name: Run tender scraper (${{ matrix.source_key }})
         env:
