@@ -7,7 +7,10 @@ import os
 
 # ── Output / Google Sheets ──────────────────────────────────────────────────
 SHEETS_CONFIG_FILE = "sheets.json"
-WORKSHEET_NAME     = "TendersData"
+# Each source now writes to its own worksheet tab (see "sheet_tab" in SOURCES
+# below) so portals don't share one growing "database". RunState also keys
+# its rows by source "key", so sources no longer stomp each other's resume
+# position when run in parallel.
 
 # ── Scraping limits (set to None for unlimited) ─────────────────────────────
 MAX_ORGANIZATIONS_TO_PROCESS = None
@@ -71,9 +74,11 @@ NUMERIC_FIELDS = {"Tender Fee in Rs", "EMD Amount in Rs", "Tender Value in Rs"}
 
 # ── Source definitions ───────────────────────────────────────────────────────
 # Each entry tells the scraper:
+#   key          – short stable id, used as the RunState row key (no spaces)
 #   name         – human-readable label stored in "Source Website" column
 #   base_url     – root URL of the portal
 #   scraper      – dotted import path of the scraper class inside scrapers/
+#   sheet_tab    – worksheet tab this source writes to (its own "database")
 #   enabled      – easy on/off toggle
 #
 # Portals sharing the NIC eProcure template (eprocure.gov.in, mptenders,
@@ -81,28 +86,76 @@ NUMERIC_FIELDS = {"Tender Fee in Rs", "EMD Amount in Rs", "Tender Value in Rs"}
 
 SOURCES = [
     {
-        "name":    "CPPP / eProcure (Central)",
+        "key":      "CPPP",
+        "name":     "CPPP / eProcure (Central)",
         "base_url": "https://eprocure.gov.in/eprocure/app",
-        "scraper": "scrapers.cppp_scraper.CPPPScraper",
-        "enabled": True,
+        "scraper":  "scrapers.cppp_scraper.CPPPScraper",
+        "sheet_tab": "TendersData_CPPP",
+        "enabled":  True,
     },
     {
-        "name":    "MP Tenders",
+        "key":      "MP",
+        "name":     "MP Tenders",
         "base_url": "https://mptenders.gov.in/nicgep/app",
-        "scraper": "scrapers.cppp_scraper.CPPPScraper",   # same template
-        "enabled": False,   # flip to True once you want to activate
+        "scraper":  "scrapers.cppp_scraper.CPPPScraper",   # same template
+        "sheet_tab": "TendersData_MP",
+        "enabled":  False,   # flip to True once you want to activate
     },
     {
-        "name":    "GeMportal",
+        "key":      "GeM",
+        "name":     "GeMportal",
         "base_url": "https://bidplus.gem.gov.in",
-        "scraper": "scrapers.gem_scraper.GeMScraper",
-        "enabled": False,
+        "scraper":  "scrapers.gem_scraper.GeMScraper",
+        "sheet_tab": "TendersData_GeM",
+        "enabled":  False,
+    },
+    {
+        "key":      "UP",
+        "name":     "UP Tenders",
+        "base_url": "https://etender.up.nic.in/nicgep/app",
+        "scraper":  "scrapers.cppp_scraper.CPPPScraper",
+        "sheet_tab": "TendersData_UP",
+        "enabled":  False,
+    },
+    {
+        "key":      "Rajasthan",
+        "name":     "Rajasthan Tenders",
+        "base_url": "https://eproc.rajasthan.gov.in/nicgep/app",
+        "scraper":  "scrapers.cppp_scraper.CPPPScraper",
+        "sheet_tab": "TendersData_Rajasthan",
+        "enabled":  False,
+    },
+    {
+        "key":      "TN",
+        "name":     "Tamil Nadu Tenders",
+        "base_url": "https://tntenders.gov.in/nicgep/app",
+        "scraper":  "scrapers.cppp_scraper.CPPPScraper",
+        "sheet_tab": "TendersData_TN",
+        "enabled":  False,
+    },
+    {
+        "key":      "Kerala",
+        "name":     "Kerala Tenders",
+        "base_url": "https://etenders.kerala.gov.in/nicgep/app",
+        "scraper":  "scrapers.cppp_scraper.CPPPScraper",
+        "sheet_tab": "TendersData_Kerala",
+        "enabled":  False,
+    },
+    {
+        "key":      "Maharashtra",
+        "name":     "Maharashtra Tenders",
+        "base_url": "https://mahatenders.gov.in/nicgep/app",
+        "scraper":  "scrapers.cppp_scraper.CPPPScraper",
+        "sheet_tab": "TendersData_Maharashtra",
+        "enabled":  False,
     },
     # ── Add more NIC/GePNIC state portals here ───────────────────────────────
     # {
-    #     "name":    "Rajasthan Tenders",
-    #     "base_url": "https://sppp.rajasthan.gov.in/nicgep/app",
-    #     "scraper": "scrapers.cppp_scraper.CPPPScraper",
-    #     "enabled": False,
+    #     "key":      "Punjab",
+    #     "name":     "Punjab Tenders",
+    #     "base_url": "https://etenders.punjab.gov.in/nicgep/app",
+    #     "scraper":  "scrapers.cppp_scraper.CPPPScraper",
+    #     "sheet_tab": "TendersData_Punjab",
+    #     "enabled":  False,
     # },
 ]

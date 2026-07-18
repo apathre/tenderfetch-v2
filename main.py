@@ -1,13 +1,19 @@
 """
 main.py  –  Orchestrator
 
-Runs all enabled sources. Each source scraper:
+Runs all enabled sources, or just one if SOURCE_KEY is set (as the GitHub
+Actions matrix workflow does — each matrix job runs exactly one source key,
+so it gets its own runner and its own full timeout instead of sharing one
+job's MAX_CONCURRENT_DRIVERS budget with every other enabled source).
+
+Each source scraper:
   - Resumes from last saved org index (survives GitHub Actions 1hr kill)
   - Writes to Google Sheets after every org (nothing lost on timeout)
   - Skips orgs where no new tenders exist (incremental runs are fast)
 """
 
 import importlib
+import os
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -18,6 +24,8 @@ from core.config import (
     SOURCES,
 )
 from core.driver import get_driver
+
+SOURCE_KEY = os.getenv("SOURCE_KEY", "").strip()
 
 
 def _load_scraper_class(dotted_path: str):
@@ -52,7 +60,16 @@ def _run_source(source: dict) -> int:
 
 
 def main():
-    enabled = [s for s in SOURCES if s.get("enabled", True)]
+    if SOURCE_KEY:
+        # explicit key wins over the "enabled" flag — a matrix job or a
+        # manual single-source run should always honor what was picked
+        # (e.g. testing a state before flipping it to enabled: True).
+        enabled = [s for s in SOURCES if s["key"] == SOURCE_KEY]
+        if not enabled:
+            print(f"No source with key '{SOURCE_KEY}' found in config.SOURCES. Exiting.")
+            sys.exit(1)
+    else:
+        enabled = [s for s in SOURCES if s.get("enabled", True)]
 
     if not enabled:
         print("No enabled sources in config.SOURCES. Exiting.")

@@ -1,12 +1,14 @@
 """
 output/sheets_writer.py
 
-Changes:
-- write_tenders_batch()  : called per-org, appends immediately
-- get_existing_ids()     : load known IDs at startup
-- get_run_state()        : read last processed org index from RunState tab
-- save_run_state()       : save current org index to RunState tab
-  So if Actions kills the job mid-run, next run resumes from where it stopped.
+- write_tenders_batch()  : called per-org, appends immediately, to the
+                           calling source's own worksheet tab (source["sheet_tab"])
+- get_existing_ids()     : load known IDs at startup, scoped to that tab
+- get_run_state()        : read last processed org index for this source's
+                           row in the shared RunState tab (keyed by source["key"])
+- save_run_state()       : save current org index to that same row
+  So if Actions kills the job mid-run, next run resumes from where it stopped
+  — independently per source, since each source has its own row.
 """
 
 import json
@@ -15,14 +17,16 @@ import os
 import gspread
 from google.oauth2.service_account import Credentials
 
-from core.config import FIXED_HEADERS, GOOGLE_SCOPES, SHEETS_CONFIG_FILE, WORKSHEET_NAME
+from core.config import FIXED_HEADERS, GOOGLE_SCOPES, SHEETS_CONFIG_FILE
 
 STATE_WORKSHEET_NAME = "RunState"
+STATE_HEADERS = ["source_key", "last_org_name", "last_org_index", "last_run"]
 
 # ── module-level cache ───────────────────────────────────────────────────────
 _spreadsheet_cache = None
-_ws_cache          = None
+_ws_cache: dict[str, gspread.Worksheet] = {}
 _state_ws_cache    = None
+_state_row_cache: dict[str, int] = {}   # source_key -> row number in RunState
 
 
 def _get_credentials() -> Credentials:
@@ -52,27 +56,27 @@ def _get_spreadsheet() -> gspread.Spreadsheet:
     return _spreadsheet_cache
 
 
-def _get_worksheet() -> gspread.Worksheet:
-    global _ws_cache
-    if _ws_cache is not None:
-        return _ws_cache
+def _get_worksheet(sheet_tab: str) -> gspread.Worksheet:
+    """Get (or create) the worksheet tab for one source. Cached per tab name."""
+    if sheet_tab in _ws_cache:
+        return _ws_cache[sheet_tab]
 
     spreadsheet = _get_spreadsheet()
     try:
-        ws = spreadsheet.worksheet(WORKSHEET_NAME)
+        ws = spreadsheet.worksheet(sheet_tab)
     except gspread.exceptions.WorksheetNotFound:
         ws = spreadsheet.add_worksheet(
-            title=WORKSHEET_NAME, rows=10000, cols=len(FIXED_HEADERS)
+            title=sheet_tab, rows=10000, cols=len(FIXED_HEADERS)
         )
-        print(f"[Sheets] Created worksheet '{WORKSHEET_NAME}'")
+        print(f"[Sheets] Created worksheet '{sheet_tab}'")
 
     current = ws.row_values(1)
     if current != FIXED_HEADERS:
         ws.clear()
         ws.append_row(FIXED_HEADERS)
-        print(f"[Sheets] Headers written ({len(FIXED_HEADERS)} columns)")
+        print(f"[Sheets] Headers written to '{sheet_tab}' ({len(FIXED_HEADERS)} columns)")
 
-    _ws_cache = ws
+    _ws_cache[sheet_tab] = ws
     return ws
 
 
@@ -86,84 +90,104 @@ def _get_state_worksheet() -> gspread.Worksheet:
         ws = spreadsheet.worksheet(STATE_WORKSHEET_NAME)
     except gspread.exceptions.WorksheetNotFound:
         ws = spreadsheet.add_worksheet(
-            title=STATE_WORKSHEET_NAME, rows=10, cols=3
+            title=STATE_WORKSHEET_NAME, rows=50, cols=len(STATE_HEADERS)
         )
-        ws.append_row(["last_org_index", "last_org_name", "last_run"])
-        ws.append_row([0, "", ""])
+        ws.append_row(STATE_HEADERS)
         print(f"[Sheets] Created worksheet '{STATE_WORKSHEET_NAME}'")
+
+    if ws.row_values(1) != STATE_HEADERS:
+        # migrate from the old single-row (no source_key) schema, or fix a
+        # mismatched header — safe no-op if it's already correct.
+        ws.update("A1", [STATE_HEADERS])
+        print(f"[Sheets] '{STATE_WORKSHEET_NAME}' header set to {STATE_HEADERS}")
 
     _state_ws_cache = ws
     return ws
 
 
+def _find_or_create_state_row(source_key: str) -> int:
+    """Return the 1-indexed row number holding this source's run state,
+    creating a new row for it if one doesn't exist yet."""
+    if source_key in _state_row_cache:
+        return _state_row_cache[source_key]
+
+    ws = _get_state_worksheet()
+    keys = ws.col_values(1)[1:]  # skip header row
+    if source_key in keys:
+        row = keys.index(source_key) + 2  # +1 for header, +1 for 1-indexing
+    else:
+        ws.append_row([source_key, "", 0, ""])
+        row = len(keys) + 2
+        print(f"[Sheets] Created RunState row for '{source_key}'")
+
+    _state_row_cache[source_key] = row
+    return row
+
+
 # ── public API ───────────────────────────────────────────────────────────────
 
-def get_existing_ids(source_name: str) -> set[str]:
-    """Load all known Tender IDs for a source from the sheet."""
-    ws = _get_worksheet()
+def get_existing_ids(source: dict) -> set[str]:
+    """Load all known Tender IDs from this source's own worksheet tab."""
+    ws = _get_worksheet(source["sheet_tab"])
     try:
-        id_col  = FIXED_HEADERS.index("Tender ID")
-        src_col = FIXED_HEADERS.index("Source Website")
+        id_col = FIXED_HEADERS.index("Tender ID")
         all_rows = ws.get_all_values()[1:]
         ids = {
             row[id_col].strip()
             for row in all_rows
-            if len(row) > max(id_col, src_col)
-            and row[src_col].strip() == source_name
-            and row[id_col].strip()
+            if len(row) > id_col and row[id_col].strip()
         }
-        print(f"[Sheets] Loaded {len(ids)} existing Tender IDs for '{source_name}'")
+        print(f"[Sheets] [{source['key']}] Loaded {len(ids)} existing Tender IDs")
         return ids
     except Exception as e:
-        print(f"[Sheets] Warning: could not load existing IDs – {e}")
+        print(f"[Sheets] [{source.get('key')}] Warning: could not load existing IDs – {e}")
         return set()
 
 
-def write_tenders_batch(tenders: list[dict]) -> None:
-    """
-    
-    """
+def write_tenders_batch(source: dict, tenders: list[dict]) -> None:
+    """Append a batch of tenders (typically one org's worth) to this
+    source's worksheet tab immediately."""
     if not tenders:
         return
 
-    ws = _get_worksheet()
+    ws = _get_worksheet(source["sheet_tab"])
     new_rows = [
         [t.get(h, "") for h in FIXED_HEADERS]
         for t in tenders
         if t.get("Tender ID", "").strip()
     ]
-    
+
     if new_rows:
         ws.append_rows(new_rows)
-        print(f"[Sheets] ✓ Written {len(new_rows)} tender(s) to sheet")
+        print(f"[Sheets] [{source['key']}] ✓ Written {len(new_rows)} tender(s) to '{source['sheet_tab']}'")
     else:
-        print(f"[Sheets] No rows to write — all missing Tender ID")
+        print(f"[Sheets] [{source.get('key')}] No rows to write — all missing Tender ID")
 
 
-def get_run_state() -> tuple[int, str]:
+def get_run_state(source: dict) -> tuple[int, str]:
     """
-    Returns (last_org_index, last_org_name).
+    Returns (last_org_index, last_org_name) for this source.
     last_org_index is the index of the last ORG that was fully processed.
-    Next run should start from last_org_index + 1.
+    Next run for this source should start from last_org_index + 1.
     """
     try:
         ws = _get_state_worksheet()
-        row = ws.row_values(2)   # row 1 = header, row 2 = state
-        if not row or not row[0]:
-            return 0, ""
-        idx  = int(row[0]) if row[0].strip().isdigit() else 0
-        name = row[1] if len(row) > 1 else ""
-        print(f"[Sheets] Resuming from org index {idx} ('{name}')")
+        row = _find_or_create_state_row(source["key"])
+        values = ws.row_values(row)
+        idx = int(values[2]) if len(values) > 2 and values[2].strip().isdigit() else 0
+        name = values[1] if len(values) > 1 else ""
+        print(f"[Sheets] [{source['key']}] Resuming from org index {idx} ('{name}')")
         return idx, name
     except Exception as e:
-        print(f"[Sheets] Could not read run state – starting from 0. ({e})")
+        print(f"[Sheets] [{source.get('key')}] Could not read run state – starting from 0. ({e})")
         return 0, ""
 
 
-def save_run_state(org_index: int, org_name: str, run_time: str) -> None:
-    """Save the index of the last fully-processed org."""
+def save_run_state(source: dict, org_index: int, org_name: str, run_time: str) -> None:
+    """Save the index of the last fully-processed org for this source."""
     try:
         ws = _get_state_worksheet()
-        ws.update("A2:C2", [[org_index, org_name, run_time]])
+        row = _find_or_create_state_row(source["key"])
+        ws.update(f"A{row}:D{row}", [[source["key"], org_name, org_index, run_time]])
     except Exception as e:
-        print(f"[Sheets] Warning: could not save run state – {e}")
+        print(f"[Sheets] [{source.get('key')}] Warning: could not save run state – {e}")

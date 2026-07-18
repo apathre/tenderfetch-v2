@@ -98,7 +98,7 @@ class BaseScraper(ABC):
         total_written = 0
 
         # ── load existing IDs once ───────────────────────────────────────────
-        known_ids = get_existing_ids(self.name)
+        known_ids = get_existing_ids(self.source)
 
         # ── fetch full org list ──────────────────────────────────────────────
         all_orgs = self.fetch_org_list()
@@ -108,7 +108,7 @@ class BaseScraper(ABC):
         total_orgs = len(all_orgs)
 
         # ── resume from last saved position ─────────────────────────────────
-        last_index, last_name = get_run_state()
+        last_index, last_name = get_run_state(self.source)
 
         # if last run completed all orgs, reset and start fresh
         if last_index >= total_orgs:
@@ -161,7 +161,7 @@ class BaseScraper(ABC):
                             continue
 
                     # ── WRITE IMMEDIATELY after this org ─────────────────────
-                    write_tenders_batch(org_tenders)
+                    write_tenders_batch(self.source, org_tenders)
                     total_written += len(org_tenders)
 
             except Exception as e:
@@ -169,7 +169,7 @@ class BaseScraper(ABC):
                 # still save state so we skip this broken org next time
             
             # ── save progress after every org ────────────────────────────────
-            save_run_state(i + 1, org_name, fetch_date)
+            save_run_state(self.source, i + 1, org_name, fetch_date)
 
         print(f"[{self.name}] Run complete — {total_written} new tenders written")
         return total_written
