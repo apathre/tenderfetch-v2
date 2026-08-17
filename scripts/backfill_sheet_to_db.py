@@ -19,6 +19,14 @@ Usage:
 import sys
 from pathlib import Path
 
+# db_writer/sheets_writer print "✓"/"✗" status lines — fine on GitHub Actions
+# (Linux, UTF-8 stdout by default), but a Windows terminal's legacy cp1252
+# codepage can't encode them and crashes mid-print, after the DB write/commit
+# has already succeeded. Force UTF-8 stdout for local Windows runs of this script.
+if sys.platform == "win32":
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from core.config import FIXED_HEADERS, SOURCES
