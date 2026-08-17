@@ -158,4 +158,33 @@ SOURCES = [
     #     "sheet_tab": "TendersData_Punjab",
     #     "enabled":  False,
     # },
+    {
+        "key":      "NTPC",
+        "name":     "NTPC eProcurement",
+        "base_url": "https://eprocurentpc.nic.in/nicgep/app",
+        "scraper":  "scrapers.cppp_scraper.CPPPScraper",   # same NIC/GePNIC template as CPPP
+        "sheet_tab": "TendersData_NTPC",
+        "enabled":  False,   # flip to True once verified
+    },
+    {
+        "key":      "SECI",
+        "name":     "Solar Energy Corporation of India (SECI)",
+        "base_url": "https://www.seci.co.in",
+        "scraper":  "scrapers.seci_scraper.SECIScraper",
+        "sheet_tab": "TendersData_SECI",
+        "enabled":  False,
+    },
+    {
+        "key":      "SJVN",
+        "name":     "SJVN Limited",
+        "base_url": "https://sjvn.nic.in",
+        "scraper":  "scrapers.sjvn_scraper.SJVNScraper",
+        "sheet_tab": "TendersData_SJVN",
+        "enabled":  False,
+    },
+    # PowerGrid (apps.powergrid.in) intentionally not added yet — 8,405+
+    # tenders with no natural org grouping means it needs its own chunking
+    # strategy (multiple pseudo-orgs, e.g. one per listing page) so the
+    # existing per-org resume/write cadence doesn't lose an entire run's
+    # progress to a GitHub Actions timeout. Follow-up, not part of this batch.
 ]

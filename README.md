@@ -20,8 +20,10 @@ tenderDataFetch_v2/
 │   └── base_scraper.py       # Abstract base class all scrapers inherit
 │
 ├── scrapers/
-│   ├── cppp_scraper.py       # NIC eProcure template (CPPP, MP Tenders, state GePNIC)
-│   └── gem_scraper.py        # GeM portal stub (implement when needed)
+│   ├── cppp_scraper.py       # NIC eProcure template (CPPP, MP Tenders, state GePNIC, NTPC)
+│   ├── gem_scraper.py        # GeM portal stub (implement when needed)
+│   ├── seci_scraper.py       # SECI (seci.co.in) — own site, single org, DataTables.js listing
+│   └── sjvn_scraper.py       # SJVN (sjvn.nic.in) — own Drupal site, single org, ?page=N pagination
 │
 ├── database/
 │   └── scraped_tenders.sql   # DDL for the Neon mirror (run once, see below)

@@ -26,6 +26,9 @@ on:
           - TN
           - Kerala
           - Maharashtra
+          - NTPC
+          - SECI
+          - SJVN
 
 jobs:
   resolve:
