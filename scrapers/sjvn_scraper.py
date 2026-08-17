@@ -25,6 +25,15 @@ from core.config import FIXED_HEADERS, NUMERIC_FIELDS
 T_LIST_LOAD = 4
 T_DETAIL = 3
 
+# Hard safety cap on the listing pagination loop. On a brand-new source's
+# first-ever run, known_ids starts empty, so the usual early-exit-on-
+# known-id never triggers — the loop only stops when a page has no cards
+# or (normally) no "next" link. This bounds worst case: if SJVN's pager
+# markup ever has an edge case this scraper's pager-detection doesn't
+# handle (only verified against the current page-0 markup), it terminates
+# instead of running until GitHub Actions' 60-minute job timeout kills it.
+MAX_LIST_PAGES = 200
+
 _REF_LOCATION_RE = re.compile(r"^(.*?)\s*\(Location\s*:-\s*(.*?)\)\s*$")
 
 # Detail-page label -> FIXED_HEADERS column (includes the Hindi variant seen
@@ -59,10 +68,13 @@ class SJVNScraper(BaseScraper):
         hit_known = False
         page = 0
 
-        while True:
+        while page < MAX_LIST_PAGES:
             self.driver.get(f"{org_url}?page={page}")
             time.sleep(T_LIST_LOAD)
             self.page_has_captcha()
+
+            if page % 10 == 0:
+                print(f"[{self.name}]   listing page {page} — {len(stubs)} stub(s) so far")
 
             soup = BeautifulSoup(self.driver.page_source, "html.parser")
             cards = soup.select("div.views-row")
@@ -104,6 +116,9 @@ class SJVNScraper(BaseScraper):
             if not next_link:
                 break
             page += 1
+        else:
+            print(f"[{self.name}]   hit MAX_LIST_PAGES ({MAX_LIST_PAGES}) safety cap — stopping "
+                  f"pagination early with {len(stubs)} stub(s) collected so far")
 
         return stubs, hit_known
 
