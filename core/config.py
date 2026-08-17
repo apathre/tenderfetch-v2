@@ -16,6 +16,13 @@ SHEETS_CONFIG_FILE = "sheets.json"
 MAX_ORGANIZATIONS_TO_PROCESS = None
 MAX_TENDERS_PER_ORG          = None
 
+# After the normal discovery pass, re-fetch the detail page for already-known
+# tenders whose recorded deadline falls within this many days — catches
+# corrigendum-driven deadline extensions that the discovery pass alone would
+# never see (it stops at the first already-known tender id it hits). Set to
+# 0 to disable.
+RECHECK_DEADLINE_WINDOW_DAYS = 7
+
 # ── Concurrency ─────────────────────────────────────────────────────────────
 MAX_CONCURRENT_DRIVERS = 2   # how many Chrome instances to run in parallel
 

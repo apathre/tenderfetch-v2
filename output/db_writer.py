@@ -115,7 +115,7 @@ def write_tenders_batch_db(source: dict, tenders: list[dict]) -> None:
 
     sheet_columns  = list(_HEADER_TO_COLUMN.values())
     insert_columns = sheet_columns + ["source_key", "deadline_at"]
-    update_columns = [c for c in sheet_columns if c != "tender_id"] + ["deadline_at"]
+    text_update_columns = [c for c in sheet_columns if c != "tender_id"]
 
     values = []
     for t in rows:
@@ -125,7 +125,17 @@ def write_tenders_batch_db(source: dict, tenders: list[dict]) -> None:
         values.append(row)
 
     placeholders = "(" + ", ".join(["%s"] * len(insert_columns)) + ")"
-    set_clause = ", ".join(f"{c} = EXCLUDED.{c}" for c in update_columns)
+    # COALESCE(NULLIF(...)) rather than a plain overwrite: a re-check pass
+    # (see get_soon_to_expire()) fetches only a tender's detail page, not
+    # its listing-page context (organisation, tender count, etc. — those
+    # are only ever set by the listing/org loop) — a plain overwrite would
+    # blank those columns out on every re-check. Blank incoming values now
+    # keep whatever's already stored instead of erasing it.
+    set_clause = ", ".join(
+        f"{c} = COALESCE(NULLIF(EXCLUDED.{c}, ''), scraped_tenders.{c})"
+        for c in text_update_columns
+    )
+    set_clause += ", deadline_at = COALESCE(EXCLUDED.deadline_at, scraped_tenders.deadline_at)"
 
     sql = f"""
         INSERT INTO scraped_tenders ({", ".join(insert_columns)})
@@ -144,3 +154,29 @@ def write_tenders_batch_db(source: dict, tenders: list[dict]) -> None:
     except Exception:
         conn.rollback()
         raise
+
+
+def get_soon_to_expire(source: dict, days: int) -> list[dict]:
+    """Already-known tenders (already in Neon) from this source whose
+    recorded deadline falls within the next `days` — candidates for a
+    corrigendum re-check. The normal incremental scrape stops at the first
+    already-known tender id it hits (see base_scraper.py), so a deadline
+    extension published after the first scrape is otherwise never seen.
+    Never raises — if Neon isn't reachable, the caller just skips the
+    re-check pass for this run rather than failing the whole scrape."""
+    try:
+        conn = _get_connection()
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT tender_id, tender_detail_url FROM scraped_tenders
+                   WHERE source_key = %s
+                     AND deadline_at IS NOT NULL
+                     AND deadline_at BETWEEN CURRENT_DATE AND CURRENT_DATE + %s * INTERVAL '1 day'
+                     AND tender_detail_url IS NOT NULL AND tender_detail_url != ''""",
+                (source["key"], days),
+            )
+            rows = cur.fetchall()
+        return [{"tender_id": r[0], "detail_url": r[1]} for r in rows]
+    except Exception as e:
+        print(f"[DB] [{source.get('key')}] Warning: could not load soon-to-expire tenders – {e}")
+        return []

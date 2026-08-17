@@ -86,14 +86,14 @@ class BaseScraper(ABC):
         Writes to sheet after every org so nothing is lost if Actions kills the job.
         Resumes from last saved org index if previous run was interrupted.
         """
-        from core.config import FIXED_HEADERS
+        from core.config import FIXED_HEADERS, RECHECK_DEADLINE_WINDOW_DAYS
         from output.sheets_writer import (
             get_existing_ids,
             get_run_state,
             save_run_state,
             write_tenders_batch,
         )
-        from output.db_writer import write_tenders_batch_db
+        from output.db_writer import get_soon_to_expire, write_tenders_batch_db
 
         fetch_date  = self.now_iso()
         total_written = 0
@@ -181,6 +181,40 @@ class BaseScraper(ABC):
             
             # ── save progress after every org ────────────────────────────────
             save_run_state(self.source, i + 1, org_name, fetch_date)
+
+        # ── re-check tenders closing soon, in case a corrigendum extended
+        # them ────────────────────────────────────────────────────────────
+        # The org loop above only ever visits a tender once (stops at the
+        # first already-known id, for efficiency) — so a deadline extension
+        # published after that first scrape is otherwise never seen. This
+        # queries Neon (not Sheets — it's the one with real per-tender
+        # upsert semantics) for already-known tenders about to close, and
+        # re-fetches just those detail pages. Neon-only: the Sheets writer
+        # only ever appends, so writing these here would create duplicate
+        # rows there rather than updating the existing one.
+        if RECHECK_DEADLINE_WINDOW_DAYS > 0:
+            candidates = get_soon_to_expire(self.source, RECHECK_DEADLINE_WINDOW_DAYS)
+            if candidates:
+                print(f"[{self.name}] Re-checking {len(candidates)} tender(s) "
+                      f"closing within {RECHECK_DEADLINE_WINDOW_DAYS} days")
+                recheck_tenders = []
+                for cand in candidates:
+                    try:
+                        detail = self.fetch_tender_detail(cand["detail_url"])
+                        record = {h: "" for h in FIXED_HEADERS}
+                        record.update(detail)
+                        record["Source Website"] = self.name
+                        record["Fetch Date"]     = fetch_date
+                        if not record.get("Tender ID"):
+                            record["Tender ID"] = cand["tender_id"]
+                        recheck_tenders.append(record)
+                    except Exception as e:
+                        print(f"[{self.name}]   ✗ recheck error ({cand['tender_id']}): {e}")
+
+                try:
+                    write_tenders_batch_db(self.source, recheck_tenders)
+                except Exception as e:
+                    print(f"[{self.name}]  ✗ DB write error (recheck): {e}")
 
         print(f"[{self.name}] Run complete — {total_written} new tenders written")
         return total_written
