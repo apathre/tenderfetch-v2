@@ -93,6 +93,7 @@ class BaseScraper(ABC):
             save_run_state,
             write_tenders_batch,
         )
+        from output.db_writer import write_tenders_batch_db
 
         fetch_date  = self.now_iso()
         total_written = 0
@@ -162,6 +163,16 @@ class BaseScraper(ABC):
 
                     # ── WRITE IMMEDIATELY after this org ─────────────────────
                     write_tenders_batch(self.source, org_tenders)
+
+                    # Mirror into Neon for TenderDesk's Discovery feature.
+                    # Independent of the Sheets write above — a DB hiccup
+                    # (or a missing DISCOVERY_DATABASE_URL) must never lose
+                    # or block the proven Sheets write path.
+                    try:
+                        write_tenders_batch_db(self.source, org_tenders)
+                    except Exception as e:
+                        print(f"[{self.name}]  ✗ DB write error: {e}")
+
                     total_written += len(org_tenders)
 
             except Exception as e:
