@@ -23,8 +23,15 @@ tenderDataFetch_v2/
 │   ├── cppp_scraper.py       # NIC eProcure template (CPPP, MP Tenders, state GePNIC)
 │   └── gem_scraper.py        # GeM portal stub (implement when needed)
 │
+├── database/
+│   └── scraped_tenders.sql   # DDL for the Neon mirror (run once, see below)
+│
+├── scripts/
+│   └── backfill_sheet_to_db.py  # one-time: copy existing Sheet rows into Neon
+│
 └── output/
-    └── sheets_writer.py      # Google Sheets writer – one worksheet tab per source
+    ├── sheets_writer.py      # Google Sheets writer – one worksheet tab per source
+    └── db_writer.py          # Neon Postgres writer – mirrors every write into scraped_tenders
 ```
 
 ## Each source has its own worksheet tab
@@ -104,8 +111,29 @@ in `.github/scripts/resolve_sources.py`. Otherwise trigger it manually via
 |---|---|---|
 | `SERVICE_ACCOUNT_JSON` | Yes | Full JSON content of GCP service account key |
 | `SHEET_URL` | Yes | Your Google Sheet's URL (the workflow writes this into `sheets.json` at runtime — see below) |
+| `DISCOVERY_DATABASE_URL` | Yes | Connection string for the **dedicated** Neon project that mirrors scraped tenders (`postgresql://user:pass@host/db?sslmode=require`). This is intentionally a **separate Neon project** from TenderDesk's production app database — this workflow should never hold credentials that can reach user/billing data. |
 
-Add both under repo **Settings → Secrets and variables → Actions → New repository secret**.
+Add these under repo **Settings → Secrets and variables → Actions → New repository secret**.
+
+## Neon mirror (`scraped_tenders`)
+
+Every scraped tender is written both to its Google Sheet tab (unchanged) and,
+via `output/db_writer.py`, upserted into a `scraped_tenders` table in a
+separate Neon Postgres project — that's what TenderDesk's Discovery feature
+reads from, since a spreadsheet can't be filtered/paginated/indexed the way
+a growing tender feed needs.
+
+Setup (one time):
+1. Create a new free Neon project (e.g. `tenderfetch-discovery`).
+2. Run `database/scraped_tenders.sql` against it (Neon SQL editor, or `psql "$DISCOVERY_DATABASE_URL" -f database/scraped_tenders.sql`).
+3. Add its connection string as the `DISCOVERY_DATABASE_URL` secret above.
+4. Optionally run `scripts/backfill_sheet_to_db.py` once locally to copy the
+   existing `TendersData` tab's rows into the new table (see the script's
+   docstring for required local env vars).
+
+The DB write happens right after the Sheets write in `core/base_scraper.py`,
+wrapped in its own try/except — a Neon outage or a missing
+`DISCOVERY_DATABASE_URL` never blocks or breaks the Sheets write.
 
 ## sheets.json format
 

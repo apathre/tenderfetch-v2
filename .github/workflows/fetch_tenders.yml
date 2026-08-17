@@ -92,6 +92,7 @@ jobs:
         env:
           SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
           SOURCE_KEY: ${{ matrix.source_key }}
+          DISCOVERY_DATABASE_URL: ${{ secrets.DISCOVERY_DATABASE_URL }}
         run: python main.py
 
       - name: Upload debug artifacts

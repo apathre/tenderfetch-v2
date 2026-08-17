@@ -39,7 +39,11 @@ def _get_credentials() -> Credentials:
 def _get_sheet_url() -> str:
     if not os.path.exists(SHEETS_CONFIG_FILE):
         raise FileNotFoundError(f"{SHEETS_CONFIG_FILE} not found.")
-    with open(SHEETS_CONFIG_FILE) as fh:
+    # utf-8-sig strips a leading BOM if present (e.g. from PowerShell's
+    # `Out-File -Encoding utf8`, which always writes one) and is a no-op
+    # otherwise — plain `open()` chokes on that BOM with a confusing
+    # "Expecting value: line 1 column 1" JSONDecodeError.
+    with open(SHEETS_CONFIG_FILE, encoding='utf-8-sig') as fh:
         cfg = json.load(fh)
     url = cfg.get("SHEET_URL")
     if not url:
