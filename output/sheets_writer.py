@@ -131,9 +131,19 @@ def _find_or_create_state_row(source_key: str) -> int:
 # ── public API ───────────────────────────────────────────────────────────────
 
 def get_existing_ids(source: dict) -> set[str]:
-    """Load all known Tender IDs from this source's own worksheet tab."""
-    ws = _get_worksheet(source["sheet_tab"])
+    """Load all known Tender IDs from this source's own worksheet tab.
+
+    Never raises — Sheets is a best-effort mirror, not the source of truth
+    (scraped_tenders in Neon is). A Sheets failure here (e.g. the shared
+    workbook hitting Google's 10M-cell-per-spreadsheet ceiling, which
+    happens when trying to create a brand-new tab for a new source) must
+    never stop a run before it's even fetched a tender. Returning an empty
+    set just means this run treats everything as "new" — Neon's own
+    UNIQUE(source_key, tender_id) upsert still prevents duplicate rows
+    there even if nothing gets deduped Sheets-side.
+    """
     try:
+        ws = _get_worksheet(source["sheet_tab"])
         id_col = FIXED_HEADERS.index("Tender ID")
         all_rows = ws.get_all_values()[1:]
         ids = {
@@ -150,22 +160,30 @@ def get_existing_ids(source: dict) -> set[str]:
 
 def write_tenders_batch(source: dict, tenders: list[dict]) -> None:
     """Append a batch of tenders (typically one org's worth) to this
-    source's worksheet tab immediately."""
+    source's worksheet tab immediately.
+
+    Never raises, same reasoning as get_existing_ids() above — a Sheets
+    failure (e.g. the workbook-wide cell cap) must not prevent the
+    Neon write in base_scraper.py's caller from running.
+    """
     if not tenders:
         return
 
-    ws = _get_worksheet(source["sheet_tab"])
-    new_rows = [
-        [t.get(h, "") for h in FIXED_HEADERS]
-        for t in tenders
-        if t.get("Tender ID", "").strip()
-    ]
+    try:
+        ws = _get_worksheet(source["sheet_tab"])
+        new_rows = [
+            [t.get(h, "") for h in FIXED_HEADERS]
+            for t in tenders
+            if t.get("Tender ID", "").strip()
+        ]
 
-    if new_rows:
-        ws.append_rows(new_rows)
-        print(f"[Sheets] [{source['key']}] ✓ Written {len(new_rows)} tender(s) to '{source['sheet_tab']}'")
-    else:
-        print(f"[Sheets] [{source.get('key')}] No rows to write — all missing Tender ID")
+        if new_rows:
+            ws.append_rows(new_rows)
+            print(f"[Sheets] [{source['key']}] ✓ Written {len(new_rows)} tender(s) to '{source['sheet_tab']}'")
+        else:
+            print(f"[Sheets] [{source.get('key')}] No rows to write — all missing Tender ID")
+    except Exception as e:
+        print(f"[Sheets] [{source.get('key')}] Warning: could not write batch – {e}")
 
 
 def get_run_state(source: dict) -> tuple[int, str]:
