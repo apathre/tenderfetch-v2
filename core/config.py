@@ -23,6 +23,13 @@ MAX_TENDERS_PER_ORG          = None
 # 0 to disable.
 RECHECK_DEADLINE_WINDOW_DAYS = 7
 
+# scripts/prune_expired_sheet_rows.py deletes Sheet rows whose deadline is
+# more than this many days in the past — keeps the shared workbook under
+# Google's 10M-cell-per-spreadsheet ceiling. Neon (scraped_tenders) is
+# unaffected — it's the real, unbounded source of truth; this only trims
+# the best-effort Sheets mirror.
+SHEETS_PRUNE_GRACE_DAYS = 30
+
 # ── Concurrency ─────────────────────────────────────────────────────────────
 MAX_CONCURRENT_DRIVERS = 2   # how many Chrome instances to run in parallel
 

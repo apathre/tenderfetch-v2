@@ -12,6 +12,7 @@ tenderDataFetch_v2/
 │
 ├── .github/
 │   ├── workflows/fetch_tenders.yml   # matrix workflow – one job per source
+│   ├── workflows/prune_sheets.yml    # weekly – trims expired rows from every Sheet tab
 │   └── scripts/resolve_sources.py    # picks which source key(s) run per trigger
 │
 ├── core/
@@ -29,7 +30,8 @@ tenderDataFetch_v2/
 │   └── scraped_tenders.sql   # DDL for the Neon mirror (run once, see below)
 │
 ├── scripts/
-│   └── backfill_sheet_to_db.py  # one-time: copy existing Sheet rows into Neon
+│   ├── backfill_sheet_to_db.py     # one-time: copy existing Sheet rows into Neon
+│   └── prune_expired_sheet_rows.py # scheduled: drop old rows + shrink each tab's grid
 │
 └── output/
     ├── sheets_writer.py      # Google Sheets writer – one worksheet tab per source
@@ -133,9 +135,51 @@ Setup (one time):
    existing `TendersData` tab's rows into the new table (see the script's
    docstring for required local env vars).
 
-The DB write happens right after the Sheets write in `core/base_scraper.py`,
-wrapped in its own try/except — a Neon outage or a missing
-`DISCOVERY_DATABASE_URL` never blocks or breaks the Sheets write.
+The DB write happens right after the Sheets write in `core/base_scraper.py`.
+Both directions are fault-isolated — a Neon outage (or a missing
+`DISCOVERY_DATABASE_URL`) never blocks the Sheets write, and a Sheets
+failure (e.g. the shared workbook hitting Google's 10M-cell-per-spreadsheet
+limit — see "Sheets capacity" below) never blocks the Neon write. Sheets is
+a best-effort mirror; Neon is the real source of truth.
+
+## Corrigendum re-checks (`RECHECK_DEADLINE_WINDOW_DAYS`)
+
+The normal discovery pass stops at the first *already-known* tender id it
+hits on each run (an efficiency trade-off — avoids re-fetching the entire
+backlog every time). That means once a tender's scraped, its deadline is
+never re-verified — a corrigendum extending it, published after the first
+scrape, is otherwise never seen.
+
+After the org loop, `core/base_scraper.py` queries Neon for already-known
+tenders from this source whose recorded deadline falls within
+`RECHECK_DEADLINE_WINDOW_DAYS` (default 7) and re-fetches just those detail
+pages, upserting any changes. This is Neon-only — Sheets' writer only
+appends, so writing re-checks there would create duplicate rows instead of
+updating the existing one. Set the constant to `0` in `core/config.py` to
+disable.
+
+## Sheets capacity (`SHEETS_PRUNE_GRACE_DAYS`)
+
+Google enforces a 10-million-cell limit **per spreadsheet**, shared across
+every tab. Since Sheets is append-only, the workbook only ever grows —
+this limit has already been hit once (`Invalid requests[0].addSheet: ...
+above the limit of 10000000 cells`), which blocked *every* new tab
+creation, not just the one that triggered it.
+
+`scripts/prune_expired_sheet_rows.py`, run weekly via
+`.github/workflows/prune_sheets.yml`, deletes rows whose "Bid Submission
+End Date" is more than `SHEETS_PRUNE_GRACE_DAYS` (default 30) in the past,
+**and shrinks each tab's reserved grid down to what it actually needs** —
+clearing cell values alone doesn't free budget, Google's limit is on grid
+dimensions (rows × cols), not how many cells hold data, and
+`_get_worksheet()`'s `add_worksheet(rows=10000, ...)` reserves that many
+rows the moment any new tab is created regardless of how few ever get
+filled. A row with no parseable deadline is always kept — never delete
+data pruning can't confidently judge as expired.
+
+Neon is untouched by this — no comparable capacity constraint at this
+scale, and it's the permanent record Discovery reads from regardless of
+what happens to the Sheets mirror.
 
 ## sheets.json format
 

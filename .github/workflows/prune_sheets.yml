@@ -1,0 +1,34 @@
+name: Prune Expired Sheet Rows
+
+on:
+  schedule:
+    - cron: "0 21 * * 0"    # Sunday 9:00 PM UTC = Monday 2:30 AM IST
+  workflow_dispatch: {}
+
+jobs:
+  prune:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Write sheets.json from secret
+        env:
+          SHEET_URL: ${{ secrets.SHEET_URL }}
+        run: |
+          python -c "import json, os; json.dump({'SHEET_URL': os.environ['SHEET_URL']}, open('sheets.json', 'w'))"
+
+      - name: Prune expired rows from every source's Sheet tab
+        env:
+          SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
+        run: python scripts/prune_expired_sheet_rows.py
