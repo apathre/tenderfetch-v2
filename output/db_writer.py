@@ -77,7 +77,14 @@ assert set(_HEADER_TO_COLUMN) == set(FIXED_HEADERS), (
 # NIC eProcure / GePNIC portals render dates like "17-Aug-2026 05:00 PM";
 # try a few known variants, otherwise leave deadline_at NULL (the raw text
 # is always kept in bid_submission_end_date regardless).
-_DATE_FORMATS = ("%d-%b-%Y %I:%M %p", "%d-%b-%Y", "%d/%m/%Y %I:%M %p", "%d/%m/%Y")
+_DATE_FORMATS = (
+    "%d-%b-%Y %I:%M %p",   # NIC eProcure/GePNIC (CPPP, NTPC, state portals): "17-Aug-2026 05:00 PM"
+    "%d-%b-%Y",
+    "%d/%m/%Y %I:%M %p",   # slash-separated, 12-hour with AM/PM
+    "%d/%m/%Y %H:%M:%S",   # SECI: "18/09/2026 18:00:13" — 24-hour, includes seconds, no AM/PM
+    "%d/%m/%Y %H:%M",      # 24-hour, no seconds
+    "%d/%m/%Y",            # SJVN and other date-only fields
+)
 
 
 def _parse_deadline(raw: str):
