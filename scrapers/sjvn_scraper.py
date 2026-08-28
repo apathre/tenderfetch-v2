@@ -2,8 +2,19 @@
 scrapers/sjvn_scraper.py
 SJVN Limited (sjvn.nic.in) — a Drupal site, not the NIC eProcure template.
 
-- One organisation (SJVN) — the default tender list already mixes all its
-  internal "Contract Units" together, so no org hierarchy to walk.
+- No real org hierarchy (the default tender list already mixes all of
+  SJVN's internal "Contract Units" together) — but it has FAR more
+  historical tenders than expected (300+ and counting, confirmed from a
+  live run), so it's split into fixed-size page-range chunks rather than
+  treated as one pseudo-org. base_scraper.py only writes/checkpoints
+  *after* an org's tenders are fully fetched — one giant "SJVN" org meant
+  a run had to fetch and detail-page every tender site-wide before saving
+  anything, which blew past GitHub Actions' 60-minute job timeout on the
+  very first run without ever writing a single row. Chunking reuses that
+  same per-org write/resume machinery unchanged: each chunk of
+  PAGES_PER_CHUNK pages is its own "org", so progress is saved every
+  chunk, and an interrupted run resumes from the next chunk next time —
+  the same graceful-degradation pattern CPPP's own large history relies on.
 - Pagination is a plain `?page=N` (0-indexed) query string — no JS click
   needed, unlike SECI.
 - Listing cards give ref/location/title/NIT date/submission deadline;
@@ -15,7 +26,7 @@ SJVN Limited (sjvn.nic.in) — a Drupal site, not the NIC eProcure template.
 
 import re
 import time
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse, parse_qs
 
 from bs4 import BeautifulSoup
 
@@ -25,14 +36,12 @@ from core.config import FIXED_HEADERS, NUMERIC_FIELDS
 T_LIST_LOAD = 4
 T_DETAIL = 3
 
-# Hard safety cap on the listing pagination loop. On a brand-new source's
-# first-ever run, known_ids starts empty, so the usual early-exit-on-
-# known-id never triggers — the loop only stops when a page has no cards
-# or (normally) no "next" link. This bounds worst case: if SJVN's pager
-# markup ever has an edge case this scraper's pager-detection doesn't
-# handle (only verified against the current page-0 markup), it terminates
-# instead of running until GitHub Actions' 60-minute job timeout kills it.
-MAX_LIST_PAGES = 200
+PAGES_PER_CHUNK = 10
+
+# Outer safety bound on total chunks, in case last-page detection ever
+# fails and falls back to guessing — same reasoning as before: degrade to
+# "stops early, logs it" rather than running until the job timeout kills it.
+MAX_LIST_PAGES = 300
 
 _REF_LOCATION_RE = re.compile(r"^(.*?)\s*\(Location\s*:-\s*(.*?)\)\s*$")
 
@@ -53,33 +62,75 @@ _LABEL_MAP = {
 class SJVNScraper(BaseScraper):
 
     # ── fetch_org_list ───────────────────────────────────────────────────────
+    # Returns one pseudo-"org" per PAGES_PER_CHUNK-page slice of the listing,
+    # rather than one org for the whole site — see module docstring for why.
+    # The chunk's page range is threaded through as query params on org_url
+    # (the only channel BaseScraper's interface gives fetch_tender_list_
+    # incremental to receive per-org context).
     def fetch_org_list(self) -> list[dict]:
-        return [{
-            "org_name": "SJVN",
-            "tender_count": "",
-            "org_url": urljoin(self.base_url, "/en/tender"),
-        }]
+        tender_url = urljoin(self.base_url, "/en/tender")
+        last_page = self._get_last_page_index(tender_url)
+        print(f"[{self.name}] Listing spans pages 0-{last_page} "
+              f"({last_page // PAGES_PER_CHUNK + 1} chunk(s) of {PAGES_PER_CHUNK} pages)")
+
+        # org_name is not just a log label — base_scraper.py writes it
+        # straight into every tender's "Organisation" field, so it has to
+        # stay the real org name ("SJVN") on every chunk, not something
+        # like "SJVN pages 0-9" leaking into Discovery's UI. base_scraper's
+        # own [i+1/total_orgs] progress index still distinguishes chunks in
+        # the logs even though every org_name here is identical.
+        orgs = []
+        start = 0
+        while start <= last_page:
+            end = min(start + PAGES_PER_CHUNK - 1, last_page)
+            orgs.append({
+                "org_name": "SJVN",
+                "tender_count": "",
+                "org_url": f"{tender_url}?__chunk_start={start}&__chunk_end={end}",
+            })
+            start = end + 1
+        return orgs
+
+    def _get_last_page_index(self, tender_url: str) -> int:
+        """Read the pager's "last page" link on page 0 to get the exact
+        0-indexed final page — Drupal's default pager exposes this
+        directly, so chunk boundaries don't need to guess a total."""
+        try:
+            self.driver.get(tender_url)
+            time.sleep(T_LIST_LOAD)
+            soup = BeautifulSoup(self.driver.page_source, "html.parser")
+            last_link = soup.select_one("li.pager__item--last a")
+            if last_link and last_link.get("href"):
+                qs = parse_qs(urlparse(last_link["href"]).query)
+                return min(int(qs.get("page", ["0"])[0]), MAX_LIST_PAGES - 1)
+        except Exception as e:
+            print(f"[{self.name}] Warning: could not read last page — {e}")
+        # No "last page" link found (e.g. the whole listing fits on one
+        # page) — fall back to just page 0.
+        return 0
 
     # ── fetch_tender_list_incremental ────────────────────────────────────────
     def fetch_tender_list_incremental(
         self, org_url: str, known_ids: set[str]
     ) -> tuple[list[dict], bool]:
+        parsed = urlparse(org_url)
+        qs = parse_qs(parsed.query)
+        chunk_start = int(qs.get("__chunk_start", ["0"])[0])
+        chunk_end   = int(qs.get("__chunk_end", ["0"])[0])
+        tender_url  = parsed._replace(query="").geturl()
+
         stubs: list[dict] = []
         hit_known = False
-        page = 0
 
-        while page < MAX_LIST_PAGES:
-            self.driver.get(f"{org_url}?page={page}")
+        for page in range(chunk_start, chunk_end + 1):
+            self.driver.get(f"{tender_url}?page={page}")
             time.sleep(T_LIST_LOAD)
             self.page_has_captcha()
-
-            if page % 10 == 0:
-                print(f"[{self.name}]   listing page {page} — {len(stubs)} stub(s) so far")
 
             soup = BeautifulSoup(self.driver.page_source, "html.parser")
             cards = soup.select("div.views-row")
             if not cards:
-                break
+                break  # ran out of real pages (last chunk is often partial)
 
             for card in cards:
                 header = card.find("th")
@@ -110,15 +161,6 @@ class SJVNScraper(BaseScraper):
                     "detail_url": urljoin(self.base_url, link["href"]),
                     "tender_id":  ref_no,
                 })
-
-            # ── pagination: is there a "next page" link? ─────────────────────
-            next_link = soup.select_one("nav.pager a[title='Go to next page'], li.pager__item--next a")
-            if not next_link:
-                break
-            page += 1
-        else:
-            print(f"[{self.name}]   hit MAX_LIST_PAGES ({MAX_LIST_PAGES}) safety cap — stopping "
-                  f"pagination early with {len(stubs)} stub(s) collected so far")
 
         return stubs, hit_known
 
