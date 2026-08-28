@@ -87,6 +87,7 @@ class BaseScraper(ABC):
         Resumes from last saved org index if previous run was interrupted.
         """
         from core.config import FIXED_HEADERS, RECHECK_DEADLINE_WINDOW_DAYS
+        from core.sector_filter import is_relevant
         from output.sheets_writer import (
             get_existing_ids,
             get_run_state,
@@ -97,6 +98,8 @@ class BaseScraper(ABC):
 
         fetch_date  = self.now_iso()
         total_written = 0
+        skipped_by_title  = 0  # stage 1: title didn't even look relevant, detail page never fetched
+        skipped_by_detail = 0  # stage 2: title looked plausible, but full detail text wasn't
 
         # ── load existing IDs once ───────────────────────────────────────────
         known_ids = get_existing_ids(self.source)
@@ -144,6 +147,16 @@ class BaseScraper(ABC):
                     for stub in stubs:
                         if max_per_org and fetched >= max_per_org:
                             break
+
+                        # ── stage 1: title-only prefilter ─────────────────────
+                        # Deliberately loose (titles are often generic — the
+                        # real sector signal is frequently only in the detail
+                        # page's work description) — this only cuts obvious
+                        # noise before spending a detail-page fetch on it.
+                        if not is_relevant(stub.get("title", "")):
+                            skipped_by_title += 1
+                            continue
+
                         try:
                             detail = self.fetch_tender_detail(stub["detail_url"])
                             record = {h: "" for h in FIXED_HEADERS}
@@ -154,6 +167,20 @@ class BaseScraper(ABC):
                             record["Fetch Date"]     = fetch_date
                             if not record.get("Tender ID") and stub.get("tender_id"):
                                 record["Tender ID"] = stub["tender_id"]
+
+                            # ── stage 2: full-detail filter ────────────────────
+                            # Stricter — now has the full work description and
+                            # category fields, not just the title. Decides what
+                            # actually gets written.
+                            if not is_relevant(
+                                record.get("Title", ""), record.get("Work Description", ""),
+                                record.get("Tender Category", ""), record.get("Product Category", ""),
+                                record.get("Sub Category", ""), record.get("Form of Contract", ""),
+                                record.get("Contract Type", ""),
+                            ):
+                                skipped_by_detail += 1
+                                continue
+
                             org_tenders.append(record)
                             known_ids.add(stub["tender_id"])
                             fetched += 1
@@ -216,5 +243,9 @@ class BaseScraper(ABC):
                 except Exception as e:
                     print(f"[{self.name}]  ✗ DB write error (recheck): {e}")
 
+        from core.sector_filter import SECTOR_FILTER_ENABLED
+        if SECTOR_FILTER_ENABLED:
+            print(f"[{self.name}] Sector filter: skipped {skipped_by_title} by title, "
+                  f"{skipped_by_detail} by full detail — {total_written} written")
         print(f"[{self.name}] Run complete — {total_written} new tenders written")
         return total_written
