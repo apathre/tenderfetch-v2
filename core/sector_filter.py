@@ -87,3 +87,16 @@ def is_relevant(*texts: str) -> bool:
     if not combined.strip():
         return False
     return bool(_TECH_RE.search(combined)) and bool(_PURPOSE_RE.search(combined))
+
+
+
+def is_title_possibly_relevant(title: str) -> bool:
+      """Loose stage-1 check on the list-page title, before the detail page
+      is fetched. Passes on EITHER a tech OR a purpose keyword, or if there is
+      no title. The strict tech-AND-purpose test in is_relevant() still
+      decides on the full detail text."""
+      if not SECTOR_FILTER_ENABLED:
+          return True
+      if not title or not title.strip():
+          return True
+      return bool(_TECH_RE.search(title)) or bool(_PURPOSE_RE.search(title))
