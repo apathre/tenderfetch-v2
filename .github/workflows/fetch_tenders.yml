@@ -10,6 +10,10 @@ on:
     - cron: "30 2 * * *"    # TN          – 8:00 AM IST
     - cron: "0 3 * * *"     # Kerala      – 8:30 AM IST
     - cron: "30 3 * * *"    # Maharashtra – 9:00 AM IST
+    - cron: "0 4 * * *"     # NTPC        – 9:30 AM IST
+    - cron: "30 4 * * *"    # SECI        – 10:00 AM IST
+    - cron: "0 5 * * *"     # SJVN        – 10:30 AM IST
+    - cron: "30 5 * * *"    # GeM         – 11:00 AM IST
   workflow_dispatch:
     inputs:
       source:
