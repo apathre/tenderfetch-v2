@@ -38,11 +38,15 @@ CRON_TO_KEY = {
     "30 2 * * *": "TN",           # 8:00 AM IST
     "0 3 * * *":  "Kerala",       # 8:30 AM IST
     "30 3 * * *": "Maharashtra",  # 9:00 AM IST
+    "0 4 * * *":  "NTPC",
+    "30 4 * * *": "SECI",
+    "0 5 * * *":  "SJVN",
+    "30 5 * * *": "GeM",
 }
 
 
 def resolve() -> list[str]:
-    enabled_keys = {s["key"] for s in SOURCES if s.get("enabled", True)}
+    enabled_keys = {s["key"] for s in SOURCES}
 
     input_source = os.environ.get("INPUT_SOURCE", "").strip()
     cron = os.environ.get("CRON_SCHEDULE", "").strip()
