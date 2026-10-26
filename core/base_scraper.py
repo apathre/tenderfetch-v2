@@ -87,7 +87,7 @@ class BaseScraper(ABC):
         Resumes from last saved org index if previous run was interrupted.
         """
         from core.config import FIXED_HEADERS, RECHECK_DEADLINE_WINDOW_DAYS
-        from core.sector_filter import is_relevant
+        from core.sector_filter import is_relevant, is_title_possibly_relevant
         from output.sheets_writer import (
             get_existing_ids,
             get_run_state,
@@ -153,7 +153,7 @@ class BaseScraper(ABC):
                         # real sector signal is frequently only in the detail
                         # page's work description) — this only cuts obvious
                         # noise before spending a detail-page fetch on it.
-                        if not is_relevant(stub.get("title", "")):
+                        if not is_title_possibly_relevant(stub.get("title", "")):
                             skipped_by_title += 1
                             continue
 
