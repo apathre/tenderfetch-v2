@@ -78,6 +78,7 @@ def main():
     print(f"Running {len(enabled)} source(s) with up to {MAX_CONCURRENT_DRIVERS} parallel drivers")
 
     total = 0
+    failed = []
     with ThreadPoolExecutor(max_workers=MAX_CONCURRENT_DRIVERS) as pool:
         futures = {pool.submit(_run_source, src): src["name"] for src in enabled}
         for future in as_completed(futures):
@@ -88,10 +89,16 @@ def main():
                 total += count
             except Exception as exc:
                 print(f"\n✗ {src_name}: unhandled exception – {exc}")
+                failed.append(src_name)
 
     print(f"\n{'='*60}")
     print(f"  Total new tenders written this run: {total}")
     print(f"{'='*60}")
+
+    # make a total failure show up as a red run instead of a green one
+    if failed:
+      print(f"FAILED sources: {', '.join(failed)}")
+      sys.exit(1)
 
 
 if __name__ == "__main__":
