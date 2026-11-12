@@ -49,9 +49,14 @@ def _run_source(source: dict) -> int:
             max_orgs=MAX_ORGANIZATIONS_TO_PROCESS,
             max_per_org=MAX_TENDERS_PER_ORG,
         )
-    except Exception as exc:
-        print(f"[{name}] FATAL: {exc}")
+    except NotImplementedError:
+        # scraper class is still a stub (e.g. GeM) — not a failure
+        print(f"[{name}] scraper not implemented yet — skipped")
         return 0
+    except Exception as exc:
+        # re-raise so main() counts it as failed and the job goes red
+        print(f"[{name}] FATAL: {exc}")
+        raise
     finally:
         try:
             driver.quit()
@@ -97,8 +102,8 @@ def main():
 
     # make a total failure show up as a red run instead of a green one
     if failed:
-      print(f"FAILED sources: {', '.join(failed)}")
-      sys.exit(1)
+        print(f"FAILED sources: {', '.join(failed)}")
+        sys.exit(1)
 
 
 if __name__ == "__main__":

@@ -106,6 +106,30 @@ class BaseScraper(ABC):
 
         # ── fetch full org list ──────────────────────────────────────────────
         all_orgs = self.fetch_org_list()
+        # An empty org list means the portal is down, its URL is wrong, or it
+        # blocked us — fail loudly (red job) instead of a silent "0 written".
+        if not all_orgs:
+            raise RuntimeError(
+                f"[{self.name}] organisation list is empty — portal down, "
+                f"wrong base_url, or blocked ({self.base_url})"
+            )
+
+        # Optional per-source org filter (core/config.py "org_include"): on a
+        # state portal, walk only the power utilities instead of every PWD,
+        # municipality and university on it.
+        org_include = self.source.get("org_include")
+        if org_include:
+            pattern = re.compile(org_include, re.IGNORECASE)
+            matched = [o for o in all_orgs if pattern.search(o["org_name"])]
+            print(f"[{self.name}] org_include kept {len(matched)} of {len(all_orgs)} organisations: "
+                  + "; ".join(o["org_name"] for o in matched))
+            if not matched:
+                raise RuntimeError(
+                    f"[{self.name}] org_include matched none of {len(all_orgs)} "
+                    f"organisations — widen the pattern in core/config.py"
+                )
+            all_orgs = matched
+
         if max_orgs:
             all_orgs = all_orgs[:max_orgs]
 

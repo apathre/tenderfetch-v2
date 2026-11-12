@@ -86,6 +86,24 @@ FIXED_HEADERS = [
 
 NUMERIC_FIELDS = {"Tender Fee in Rs", "EMD Amount in Rs", "Tender Value in Rs"}
 
+# ── Org filters (optional "org_include" per source) ─────────────────────────
+# Regex matched case-insensitively against each organisation name on a NIC
+# portal's "Tenders by Organisation" page; only matching orgs are walked.
+# A run fails loudly if the pattern matches none, so a renamed org shows up
+# as a red job rather than silently missing tenders. Leave "org_include" out
+# of a source to walk every organisation (CPPP, MP, UP, ... do that today).
+STATE_POWER_ORGS = (
+    r"power|electric|energy|vidyut|bijli|urja|transmission|generation|"
+    r"distribution|hydro|renewable|grid|transco|genco|discom|nedcap|"
+    r"\bseb\b|\bpdd\b|non.?conventional"
+)
+CPSE_POWER_ORGS = STATE_POWER_ORGS + (
+    r"|damodar|\bdvc\b|neepco|nhpc|ntpc|thdc|sjvn|\bnlc|bhel|heavy electricals|"
+    r"nuclear|npcil|bhavini|ireda|power finance|\bpfc\b|\brec\b|"
+    r"rural electrification|seci|solar energy|coal"
+)
+
+
 # ── Source definitions ───────────────────────────────────────────────────────
 # Each entry tells the scraper:
 #   key          – short stable id, used as the RunState row key (no spaces)
@@ -195,6 +213,97 @@ SOURCES = [
         "scraper":  "scrapers.sjvn_scraper.SJVNScraper",
         "sheet_tab": "TendersData_SJVN",
         "enabled":  False,
+    },
+    # ── Phase 1 coverage expansion (Nov 2026): more NIC GePNIC portals ─────
+    {
+        "key":         "ETENDERS",
+        "name":        "eTenders (Central PSUs)",
+        "base_url":    "https://etenders.gov.in/eprocure/app",
+        "scraper":     "scrapers.cppp_scraper.CPPPScraper",
+        "sheet_tab":   "TendersData_ETENDERS",
+        "org_include": CPSE_POWER_ORGS,   # DVC, NEEPCO and other CPSEs
+        "enabled":     True,
+    },
+    {
+        "key":         "WB",
+        "name":        "West Bengal Tenders",
+        "base_url":    "https://wbtenders.gov.in/nicgep/app",
+        "scraper":     "scrapers.cppp_scraper.CPPPScraper",
+        "sheet_tab":   "TendersData_WB",
+        "org_include": STATE_POWER_ORGS,
+        "enabled":     True,
+    },
+    {
+        "key":         "Odisha",
+        "name":        "Odisha Tenders",
+        "base_url":    "https://tendersodisha.gov.in/nicgep/app",
+        "scraper":     "scrapers.cppp_scraper.CPPPScraper",
+        "sheet_tab":   "TendersData_Odisha",
+        "org_include": STATE_POWER_ORGS,
+        "enabled":     True,
+    },
+    {
+        "key":         "Punjab",
+        "name":        "Punjab Tenders",
+        "base_url":    "https://eproc.punjab.gov.in/nicgep/app",
+        "scraper":     "scrapers.cppp_scraper.CPPPScraper",
+        "sheet_tab":   "TendersData_Punjab",
+        "org_include": STATE_POWER_ORGS,
+        "enabled":     True,
+    },
+    {
+        "key":         "Haryana",
+        "name":        "Haryana Tenders",
+        "base_url":    "https://etenders.hry.nic.in/nicgep/app",
+        "scraper":     "scrapers.cppp_scraper.CPPPScraper",
+        "sheet_tab":   "TendersData_Haryana",
+        "org_include": STATE_POWER_ORGS,
+        "enabled":     True,
+    },
+    {
+        "key":         "HP",
+        "name":        "Himachal Pradesh Tenders",
+        "base_url":    "https://hptenders.gov.in/nicgep/app",
+        "scraper":     "scrapers.cppp_scraper.CPPPScraper",
+        "sheet_tab":   "TendersData_HP",
+        "org_include": STATE_POWER_ORGS,
+        "enabled":     True,
+    },
+    {
+        "key":         "UK",
+        "name":        "Uttarakhand Tenders",
+        "base_url":    "https://uktenders.gov.in/nicgep/app",
+        "scraper":     "scrapers.cppp_scraper.CPPPScraper",
+        "sheet_tab":   "TendersData_UK",
+        "org_include": STATE_POWER_ORGS,
+        "enabled":     True,
+    },
+    {
+        "key":         "JK",
+        "name":        "Jammu & Kashmir Tenders",
+        "base_url":    "https://jktenders.gov.in/nicgep/app",
+        "scraper":     "scrapers.cppp_scraper.CPPPScraper",
+        "sheet_tab":   "TendersData_JK",
+        "org_include": STATE_POWER_ORGS,
+        "enabled":     True,
+    },
+    {
+        "key":         "Jharkhand",
+        "name":        "Jharkhand Tenders",
+        "base_url":    "https://jharkhandtenders.gov.in/nicgep/app",
+        "scraper":     "scrapers.cppp_scraper.CPPPScraper",
+        "sheet_tab":   "TendersData_Jharkhand",
+        "org_include": STATE_POWER_ORGS,
+        "enabled":     True,
+    },
+    {
+        "key":         "Assam",
+        "name":        "Assam Tenders",
+        "base_url":    "https://assamtenders.gov.in/nicgep/app",
+        "scraper":     "scrapers.cppp_scraper.CPPPScraper",
+        "sheet_tab":   "TendersData_Assam",
+        "org_include": STATE_POWER_ORGS,
+        "enabled":     True,
     },
     # PowerGrid (apps.powergrid.in) intentionally not added yet — 8,405+
     # tenders with no natural org grouping means it needs its own chunking
