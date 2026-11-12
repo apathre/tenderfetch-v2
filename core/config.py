@@ -93,9 +93,10 @@ NUMERIC_FIELDS = {"Tender Fee in Rs", "EMD Amount in Rs", "Tender Value in Rs"}
 # as a red job rather than silently missing tenders. Leave "org_include" out
 # of a source to walk every organisation (CPPP, MP, UP, ... do that today).
 STATE_POWER_ORGS = (
-    r"power|electric|energy|vidyut|bijli|urja|transmission|generation|"
-    r"hydro|renewable|grid|transco|genco|discom|nedcap|"
-    r"\bseb\b|\bpdd\b|non.?conventional"
+    r"power|electric|energy|vidyut|bijli|\burja\b|transmission|generation|"
+    r"hydro|renewable|\bgrid|transco|genco|discom|nedcap|"
+    r"\bseb\b|\bpdd\b|non.?conventional|"
+    r"\bujvn|\bupcl\b|\bptcul\b|\bpspcl\b|\bpstcl\b|\bjbvnl\b|\bjusnl\b|\bhpsebl?\b|\bwbsedcl\b|\bwbpdcl\b|\bapdcl\b|\baegcl\b|\bapgcl\b"
 )
 CPSE_POWER_ORGS = STATE_POWER_ORGS + (
     r"|damodar|\bdvc\b|neepco|nhpc|ntpc|thdc|sjvn|\bnlc|bhel|heavy electricals|"

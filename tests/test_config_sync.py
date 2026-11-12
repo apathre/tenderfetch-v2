@@ -51,11 +51,14 @@ STATE_KEEP = [
     "Assam Power Distribution Company Limited",
     "Odisha Renewable Energy Development Agency",
     "Energy CEE", "Assam Power Generation Company Limited",
+    "MD (Power Transmisison Corporation of Uttarakhand Limited)", "UJVN Limited",
+    "Jharkhand Urja Vikas Nigam Limited",
 ]
 STATE_DROP = [
     "Public Works Department", "Municipal Corporation Kolkata", "Jal Nigam",
     "University of Calcutta", "Health and Family Welfare",
     "Food - Public Distribution and Consumer Affairs",
+    "Executive Officer Nagar Panchayat Padli Gurjar",
 ]
 CPSE_KEEP = [
     "Damodar Valley Corporation", "North Eastern Electric Power Corporation Limited",

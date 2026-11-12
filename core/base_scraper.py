@@ -123,6 +123,8 @@ class BaseScraper(ABC):
             matched = [o for o in all_orgs if pattern.search(o["org_name"])]
             print(f"[{self.name}] org_include kept {len(matched)} of {len(all_orgs)} organisations: "
                   + "; ".join(o["org_name"] for o in matched))
+            print(f"[{self.name}] org_include skipped: "
+                  + "; ".join(o["org_name"] for o in all_orgs if o not in matched))
             if not matched:
                 raise RuntimeError(
                     f"[{self.name}] org_include matched none of {len(all_orgs)} "
