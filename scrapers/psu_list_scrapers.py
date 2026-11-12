@@ -404,3 +404,52 @@ class PFCCLScraper(_ListSiteScraper):
         if docs:
             rec["Work Description"] = (rec.get("Title", "") + " | Documents: " + "; ".join(docs))[:4000]
         return rec
+
+
+# ── REC Power Development & Consultancy (TBCB + RE generation) ───────────────
+
+class RECPDCLScraper(_ListSiteScraper):
+    """recpdcl.in — one table per listing: each row is a tender title (in
+    English, though the site chrome is Hindi) followed by its NIT / RFP /
+    amendment PDFs. Two listings: transmission TBCB schemes and RE
+    generation tenders. The general /tenders page (mostly RECPDCL's own
+    office procurement on GeM, titled in Hindi) is skipped."""
+
+    LISTINGS = {
+        "rectpcltender": "RECPDCL - Transmission (TBCB)",
+        "regenerationtenders": "RECPDCL - RE Generation",
+    }
+    DOC_PRIORITY = re.compile(r"rfp|rfs|rfe|nit|request", re.I)
+
+    def fetch_org_list(self) -> list[dict]:
+        return [{"org_name": name, "tender_count": "", "org_url": urljoin(self.base_url, "/" + path)}
+                for path, name in self.LISTINGS.items()]
+
+    def fetch_tender_list_incremental(self, org_url, known_ids):
+        soup = self._soup(org_url)
+        table = soup.find("table", class_="table-bordered") or soup.find("table")
+        if not table:
+            raise RuntimeError(f"[{self.name}] tender table not found at {org_url}")
+        rows = []
+        for tr in table.find_all("tr"):
+            links = [a for a in tr.find_all("a", href=True) if ".pdf" in a["href"].lower()]
+            if not links:
+                continue
+            cell = BeautifulSoup(str(tr.find(["td", "th"])), "html.parser")
+            for a in cell.find_all("a"):
+                a.decompose()
+            title = _txt(cell)
+            if not title:
+                continue
+            main = next((a for a in links if self.DOC_PRIORITY.search(_txt(a) + a["href"])), links[0])
+            url = urljoin(org_url, main["href"])
+            docs = "; ".join(f"{_txt(a)}: {urljoin(org_url, a['href'])}" for a in links[:12])
+            rows.append({
+                "Tender ID": "RECPDCL-" + url.rsplit("/", 1)[-1].rsplit(".", 1)[0][:80],
+                "Title": title,
+                "Work Description": (title + " | Documents: " + docs)[:4000],
+                "Tender Category": "TBCB" if "tpcl" in org_url else "",
+                "Tender Detail URL": url,
+            })
+        print(f"[{self.name}] {org_url.rsplit('/', 1)[-1]}: {len(rows)} tenders")
+        return self._emit(rows, known_ids)

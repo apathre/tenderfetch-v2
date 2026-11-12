@@ -136,6 +136,19 @@ def test_pfccl():
     assert "Amendment No. 2" in rec["Work Description"], rec
 
 
+RECPDCL_TBCB = """<table class="table table-bordered"><tr><th>name</th></tr><tr><td></td></tr>
+<tr><td>Request for Proposal Document for Selection of Bidder as Transmission Service Provider for 400 kV Nabinagar-Aurangabad line
+<a href="/assets/data/pdf/NIT_Notification_Nabinagar_(English)_29102026.pdf">NIT Notification (English)</a>
+<a href="/assets/data/pdf/RFP_Nabinagar_Aurangabad_29102026.pdf">RFP Document</a></td></tr></table>"""
+
+
+def test_recpdcl():
+    stubs, rec = run(m.RECPDCLScraper, "https://www.recpdcl.in", {"rectpcltender": RECPDCL_TBCB})
+    assert rec["Tender ID"] == "RECPDCL-NIT_Notification_Nabinagar_(English)_29102026", rec
+    assert rec["Title"].startswith("Request for Proposal Document") and "NIT Notification" not in rec["Title"], rec
+    assert rec["Tender Category"] == "TBCB", rec
+
+
 if __name__ == "__main__":
     failed = 0
     for fn in [v for k, v in dict(globals()).items() if k.startswith("test_")]:

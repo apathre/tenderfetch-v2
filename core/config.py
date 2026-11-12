@@ -347,5 +347,13 @@ SOURCES = [
         "sheet_tab": "TendersData_PFCCL",
         "enabled":   True,
     },
+    {
+        "key":       "RECPDCL",
+        "name":      "REC PDCL (TBCB + RE)",
+        "base_url":  "https://www.recpdcl.in",
+        "scraper":   "scrapers.psu_list_scrapers.RECPDCLScraper",
+        "sheet_tab": "TendersData_RECPDCL",
+        "enabled":   True,
+    },
     # PowerGrid: added above as POWERGRID, reading only its last-7-days view.
 ]
