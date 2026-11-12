@@ -257,7 +257,7 @@ SOURCES = [
         "base_url":    "https://etenders.hry.nic.in/nicgep/app",
         "scraper":     "scrapers.cppp_scraper.CPPPScraper",
         "sheet_tab":   "TendersData_Haryana",
-        "org_include": STATE_POWER_ORGS,
+        "org_include": r"board|corporation",   # portal lists only 2 top-level orgs: "Haryana Board Corporation" (HVPN, UHBVN, DHBVN, HPGCL inside) and "Haryana Government"
         "enabled":     True,
     },
     {
