@@ -364,6 +364,22 @@ class THDCScraper(_ListSiteScraper):
 
 # ── PFC Consulting (TBCB bid process coordinator) ────────────────────────────
 
+MAX_PFCCL_NOTICES = 30
+
+
+def latest_date_in(text: str):
+    """Latest ddmmyyyy / dd.mm.yyyy / dd-mm-yyyy date found in text (file
+    names on RECPDCL carry their upload date), or None."""
+    best = None
+    for d, mth, y in re.findall(r"(?<!\d)(\d{2})[._-]?(\d{2})[._-]?(20\d{2})(?!\d)", text):
+        try:
+            dt = datetime(int(y), int(mth), int(d))
+        except ValueError:
+            continue
+        best = dt if best is None or dt > best else best
+    return best
+
+
 class PFCCLScraper(_ListSiteScraper):
     """pfcclindia.com — TBCB transmission RfP/RfQ notices appear as
     "What's New" items (newsDetails.php?ID=N) on the home page; each item
@@ -393,8 +409,11 @@ class PFCCLScraper(_ListSiteScraper):
                 "Tender Category": "TBCB",
                 "Tender Detail URL": url,
             })
-        print(f"[{self.name}] {len(rows)} RfP/RfQ notices on home page")
-        return self._emit(rows, known_ids)
+        # the home page keeps years of notices and gives no deadline; IDs
+        # rise over time, so keep only the newest ones
+        rows.sort(key=lambda r: int(r["Tender ID"].split("-")[1]), reverse=True)
+        print(f"[{self.name}] {len(rows)} RfP/RfQ notices on home page; keeping newest {MAX_PFCCL_NOTICES}")
+        return self._emit(rows[:MAX_PFCCL_NOTICES], known_ids)
 
     def fetch_tender_detail(self, detail_url):
         rec = super().fetch_tender_detail(detail_url)
@@ -407,6 +426,9 @@ class PFCCLScraper(_ListSiteScraper):
 
 
 # ── REC Power Development & Consultancy (TBCB + RE generation) ───────────────
+
+RECPDCL_MAX_AGE_DAYS = 240
+
 
 class RECPDCLScraper(_ListSiteScraper):
     """recpdcl.in — one table per listing: each row is a tender title (in
@@ -441,6 +463,9 @@ class RECPDCLScraper(_ListSiteScraper):
             title = _txt(cell)
             if not title:
                 continue
+            newest = latest_date_in(" ".join(a["href"] for a in links))
+            if newest and (datetime.now() - newest).days > RECPDCL_MAX_AGE_DAYS:
+                continue   # scheme with no document in ~8 months: closed or awarded
             main = next((a for a in links if self.DOC_PRIORITY.search(_txt(a) + a["href"])), links[0])
             url = urljoin(org_url, main["href"])
             docs = "; ".join(f"{_txt(a)}: {urljoin(org_url, a['href'])}" for a in links[:12])
@@ -449,6 +474,7 @@ class RECPDCLScraper(_ListSiteScraper):
                 "Title": title,
                 "Work Description": (title + " | Documents: " + docs)[:4000],
                 "Tender Category": "TBCB" if "tpcl" in org_url else "",
+                "Published Date": newest.strftime("%d-%b-%Y") if newest else "",
                 "Tender Detail URL": url,
             })
         print(f"[{self.name}] {org_url.rsplit('/', 1)[-1]}: {len(rows)} tenders")

@@ -136,15 +136,38 @@ def test_pfccl():
     assert "Amendment No. 2" in rec["Work Description"], rec
 
 
-RECPDCL_TBCB = """<table class="table table-bordered"><tr><th>name</th></tr><tr><td></td></tr>
+from datetime import datetime  # noqa: E402
+
+TODAY = datetime.now().strftime("%d%m%Y")
+RECPDCL_TBCB = f"""<table class="table table-bordered"><tr><th>name</th></tr><tr><td></td></tr>
 <tr><td>Request for Proposal Document for Selection of Bidder as Transmission Service Provider for 400 kV Nabinagar-Aurangabad line
-<a href="/assets/data/pdf/NIT_Notification_Nabinagar_(English)_29102026.pdf">NIT Notification (English)</a>
-<a href="/assets/data/pdf/RFP_Nabinagar_Aurangabad_29102026.pdf">RFP Document</a></td></tr></table>"""
+<a href="/assets/data/pdf/NIT_Notification_Nabinagar_(English)_{TODAY}.pdf">NIT Notification (English)</a>
+<a href="/assets/data/pdf/RFP_Nabinagar_Aurangabad_{TODAY}.pdf">RFP Document</a></td></tr></table>"""
+
+
+def test_latest_date_in():
+    assert m.latest_date_in("RFP_29102026.pdf Amendment-I_dated_21.09.2026_x.pdf").strftime("%Y-%m-%d") == "2026-10-29"
+    assert m.latest_date_in("RFP_Part A_14.08.2026_bikaner.pdf").strftime("%Y-%m-%d") == "2026-08-14"
+    assert m.latest_date_in("no date here.pdf") is None
+
+
+def test_recpdcl_drops_old_schemes():
+    old = RECPDCL_TBCB.replace(TODAY, "10032023")
+    s = m.RECPDCLScraper(FakeDriver({"rectpcltender": old}), SRC("https://www.recpdcl.in"))
+    stubs, _ = s.fetch_tender_list_incremental("https://www.recpdcl.in/rectpcltender", set())
+    assert stubs == [], stubs
+
+
+def test_pfccl_keeps_newest_only():
+    home = "".join(f'<a href="newsDetails.php?ID={i}">Request for Proposal for 400 kV line {i}</a>' for i in range(1000, 1100))
+    s = m.PFCCLScraper(FakeDriver({"index.php": home}), SRC("https://www.pfcclindia.com"))
+    stubs, _ = s.fetch_tender_list_incremental("https://www.pfcclindia.com/index.php", set())
+    assert len(stubs) == m.MAX_PFCCL_NOTICES and stubs[0]["tender_id"] == "PFCCL-1099", stubs[:2]
 
 
 def test_recpdcl():
     stubs, rec = run(m.RECPDCLScraper, "https://www.recpdcl.in", {"rectpcltender": RECPDCL_TBCB})
-    assert rec["Tender ID"] == "RECPDCL-NIT_Notification_Nabinagar_(English)_29102026", rec
+    assert rec["Tender ID"] == f"RECPDCL-NIT_Notification_Nabinagar_(English)_{TODAY}", rec
     assert rec["Title"].startswith("Request for Proposal Document") and "NIT Notification" not in rec["Title"], rec
     assert rec["Tender Category"] == "TBCB", rec
 
