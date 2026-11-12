@@ -1,0 +1,43 @@
+name: Probe Sites
+
+# Manual diagnostic for adding a new tender source: prints each page's
+# structure (tables, tender links, pagination) as seen from a GitHub runner.
+# Writes nothing anywhere.
+on:
+  workflow_dispatch:
+    inputs:
+      urls:
+        description: "Space-separated URLs to probe"
+        required: true
+        type: string
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install Google Chrome
+        run: |
+          wget -q -O - https://dl.google.com/linux/linux_signing_key.pub \
+            | sudo gpg --dearmor --yes -o /usr/share/keyrings/google-chrome.gpg
+          echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome.gpg] http://dl.google.com/linux/chrome/deb/ stable main" \
+            | sudo tee /etc/apt/sources.list.d/google-chrome.list
+          sudo apt-get update -q
+          sudo apt-get install -y google-chrome-stable
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Probe
+        env:
+          URLS: ${{ inputs.urls }}
+        run: python scripts/probe_site.py $URLS
