@@ -1,0 +1,33 @@
+name: Purge Non-Power Tenders from Discovery DB
+
+# Manual only. Run once with "apply" unticked to see what would be removed,
+# then again with it ticked to delete.
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: "Actually delete (leave unticked for a dry run)"
+        type: boolean
+        default: false
+
+jobs:
+  purge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Purge rows failing the sector filter
+        env:
+          DISCOVERY_DATABASE_URL: ${{ secrets.DISCOVERY_DATABASE_URL }}
+        run: python scripts/purge_irrelevant_db_rows.py ${{ inputs.apply && '--apply' || '' }}

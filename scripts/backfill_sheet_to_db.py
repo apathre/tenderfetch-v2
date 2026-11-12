@@ -30,18 +30,31 @@ if sys.platform == "win32":
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from core.config import FIXED_HEADERS, SOURCES
+from core.sector_filter import is_relevant
 from output.db_writer import write_tenders_batch_db
 from output.sheets_writer import _get_spreadsheet  # reuse existing auth/open logic
 
 BATCH_SIZE = 500
+
+# Fields fed to is_relevant() — keep in sync with core/base_scraper.py stage 2
+RELEVANCE_FIELDS = (
+    "Title", "Work Description", "Tender Category", "Product Category",
+    "Sub Category", "Form of Contract", "Contract Type",
+)
 
 
 def _rows_to_records(rows: list[list[str]]) -> list[dict]:
     records = []
     for row in rows:
         record = {h: (row[i] if i < len(row) else "") for i, h in enumerate(FIXED_HEADERS)}
-        if record.get("Tender ID", "").strip():
-            records.append(record)
+        if not record.get("Tender ID", "").strip():
+            continue
+        # Same power-sector test the live scraper applies — the Sheet holds
+        # rows scraped before core/sector_filter.py existed, which must not
+        # leak into TenderDesk Discovery.
+        if not is_relevant(*(record.get(f, "") for f in RELEVANCE_FIELDS)):
+            continue
+        records.append(record)
     return records
 
 

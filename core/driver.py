@@ -46,14 +46,17 @@ def get_driver(headless: bool = True) -> uc.Chrome:
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--disable-blink-features=AutomationControlled")
     options.add_argument("--window-size=1366,768")
+    binary = _find_chrome_binary()
+    major = _get_chrome_major(binary)
+    # Advertise the Chrome version actually installed — a hard-coded, stale
+    # version in the UA is an easy bot-detection signal.
     options.add_argument(
         "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36"
+        f"AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{major}.0.0.0 Safari/537.36"
     )
-    binary = _find_chrome_binary()
     return uc.Chrome(
         options=options,
         use_subprocess=True,
         browser_executable_path=binary,
-        version_main=_get_chrome_major(binary),
+        version_main=major,
     )
