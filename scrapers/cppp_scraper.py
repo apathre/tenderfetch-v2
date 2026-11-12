@@ -77,6 +77,17 @@ class CPPPScraper(BaseScraper):
             # unexpected layout — keep the page for the "Upload debug
             # artifacts" step so the selector can be fixed
             self.save_debug_html(f"debug_orglist_{self.source['key']}.html")
+            # also print the page's table layout into the job log, which is
+            # readable without downloading the artifact
+            print(f"[{self.name}] page title: {soup.title.get_text(strip=True) if soup.title else '-'}"
+                  f" | url: {self.driver.current_url}")
+            for ti, table in enumerate(soup.find_all("table")[:25]):
+                trs = table.find_all("tr", recursive=False) or table.find_all("tr")
+                attrs = {k: v for k, v in table.attrs.items() if k in ("id", "class")}
+                print(f"[{self.name}] table {ti} {attrs} rows={len(trs)}")
+                for tr in trs[:3]:
+                    cells = [c.get_text(" ", strip=True)[:40] for c in tr.find_all(["td", "th"], recursive=False)]
+                    print(f"[{self.name}]    {cells[:6]}")
         return orgs
 
     # ── fetch_tender_list_incremental ────────────────────────────────────────
