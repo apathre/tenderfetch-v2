@@ -96,7 +96,7 @@ STATE_POWER_ORGS = (
     r"power|electric|energy|vidyut|bijli|\burja\b|transmission|generation|"
     r"hydro|renewable|\bgrid|transco|genco|discom|nedcap|"
     r"\bseb\b|\bpdd\b|non.?conventional|"
-    r"\bujvn|\bupcl\b|\bptcul\b|\bpspcl\b|\bpstcl\b|\bjbvnl\b|\bjusnl\b|\bhpsebl?\b|\bwbsedcl\b|\bwbpdcl\b|\bapdcl\b|\baegcl\b|\bapgcl\b"
+    r"\bujvn|\bupcl\b|\bptcul\b|\bpspcl\b|\bpstcl\b|\bjbvnl\b|\bjusnl\b|\bhpsebl?\b|\bwbsedcl\b|\bwbpdcl\b|\bapdcl\b|\baegcl\b|\bapgcl\b|\bjseb\b|\b\w*reda\b"
 )
 CPSE_POWER_ORGS = STATE_POWER_ORGS + (
     r"|damodar|\bdvc\b|neepco|nhpc|ntpc|thdc|sjvn|\bnlc|bhel|heavy electricals|"

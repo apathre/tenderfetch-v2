@@ -52,13 +52,14 @@ STATE_KEEP = [
     "Odisha Renewable Energy Development Agency",
     "Energy CEE", "Assam Power Generation Company Limited",
     "MD (Power Transmisison Corporation of Uttarakhand Limited)", "UJVN Limited",
-    "Jharkhand Urja Vikas Nigam Limited",
+    "Jharkhand Urja Vikas Nigam Limited", "JSEB", "Director (UREDA)", "JREDA",
 ]
 STATE_DROP = [
     "Public Works Department", "Municipal Corporation Kolkata", "Jal Nigam",
     "University of Calcutta", "Health and Family Welfare",
     "Food - Public Distribution and Consumer Affairs",
-    "Executive Officer Nagar Panchayat Padli Gurjar",
+    "Executive Officer Nagar Panchayat Padli Gurjar", "CEO (Uttarakhand Rural Roads Development Agency)",
+    "Director (Agriculture)", "Jharkhand Industrial Area Development Authority",
 ]
 CPSE_KEEP = [
     "Damodar Valley Corporation", "North Eastern Electric Power Corporation Limited",
