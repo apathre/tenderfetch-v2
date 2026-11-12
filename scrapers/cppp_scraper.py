@@ -65,10 +65,18 @@ class CPPPScraper(BaseScraper):
             link_tag     = count_cell.find("a", href=True)
             if not link_tag:
                 continue
+            # a real org row has a short name and a numeric count; anything
+            # else is layout text caught by the loose fallback selector
+            if len(org_name) > 200 or not tender_count.isdigit():
+                continue
             org_url = urljoin(self.base_url, link_tag["href"])
             orgs.append({"org_name": org_name, "tender_count": tender_count, "org_url": org_url})
 
         print(f"[{self.name}] Found {len(orgs)} organisations")
+        if len(orgs) < 3:
+            # unexpected layout — keep the page for the "Upload debug
+            # artifacts" step so the selector can be fixed
+            self.save_debug_html(f"debug_orglist_{self.source['key']}.html")
         return orgs
 
     # ── fetch_tender_list_incremental ────────────────────────────────────────

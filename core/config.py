@@ -94,7 +94,7 @@ NUMERIC_FIELDS = {"Tender Fee in Rs", "EMD Amount in Rs", "Tender Value in Rs"}
 # of a source to walk every organisation (CPPP, MP, UP, ... do that today).
 STATE_POWER_ORGS = (
     r"power|electric|energy|vidyut|bijli|urja|transmission|generation|"
-    r"distribution|hydro|renewable|grid|transco|genco|discom|nedcap|"
+    r"hydro|renewable|grid|transco|genco|discom|nedcap|"
     r"\bseb\b|\bpdd\b|non.?conventional"
 )
 CPSE_POWER_ORGS = STATE_POWER_ORGS + (
