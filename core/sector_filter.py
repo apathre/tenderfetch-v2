@@ -90,6 +90,8 @@ PURPOSE_KEYWORDS = [
     "selection of developer", "selection of developers", "developer", "developers",
     "ppa", "power purchase agreement", "bess purchase agreement",
     "bpa", "e reverse auction", "reverse auction",
+    "request for proposal", "rfp", "request for qualification", "rfq",
+    "selection of bidder", "transmission service provider", "bid process coordinator",
     # development / construction process — generic on their own, but the AND
     # with TECH_KEYWORDS keeps precision ("setting up of a library" never
     # matches — no tech keyword present)

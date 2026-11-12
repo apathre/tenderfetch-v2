@@ -24,6 +24,11 @@ on:
     - cron: "30 9 * * *"    # JK          – 3:00 PM IST
     - cron: "0 10 * * *"    # Jharkhand   – 3:30 PM IST
     - cron: "30 10 * * *"   # Assam       – 4:00 PM IST
+    - cron: "0 11 * * *"    # POWERGRID   – 4:30 PM IST
+    - cron: "30 11 * * *"   # NTPCSITE    – 5:00 PM IST
+    - cron: "0 12 * * *"    # NGEL        – 5:30 PM IST
+    - cron: "30 12 * * *"   # THDC        – 6:00 PM IST
+    - cron: "0 13 * * *"    # PFCCL       – 6:30 PM IST
   workflow_dispatch:
     inputs:
       source:
@@ -53,6 +58,11 @@ on:
           - JK
           - Jharkhand
           - Assam
+          - POWERGRID
+          - NTPCSITE
+          - NGEL
+          - THDC
+          - PFCCL
 
 jobs:
   resolve:
@@ -115,6 +125,7 @@ jobs:
         run: |
           python tests/test_sector_filter.py
           python tests/test_config_sync.py
+          python tests/test_psu_parsers.py
 
       - name: Write sheets.json from secret
         env:

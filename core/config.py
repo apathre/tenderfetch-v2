@@ -306,9 +306,46 @@ SOURCES = [
         "org_include": STATE_POWER_ORGS,
         "enabled":     True,
     },
-    # PowerGrid (apps.powergrid.in) intentionally not added yet — 8,405+
-    # tenders with no natural org grouping means it needs its own chunking
-    # strategy (multiple pseudo-orgs, e.g. one per listing page) so the
-    # existing per-org resume/write cadence doesn't lose an entire run's
-    # progress to a GitHub Actions timeout. Follow-up, not part of this batch.
+    # ── Phase 2 coverage (Nov 2026): PSU / nodal-agency list sites ──────────
+    {
+        "key":       "POWERGRID",
+        "name":      "POWERGRID",
+        "base_url":  "https://apps.powergrid.in",
+        "scraper":   "scrapers.psu_list_scrapers.PowergridScraper",
+        "sheet_tab": "TendersData_POWERGRID",
+        "enabled":   True,
+    },
+    {
+        "key":       "NTPCSITE",
+        "name":      "NTPC Tender Portal",
+        "base_url":  "https://ntpctender.ntpc.co.in",
+        "scraper":   "scrapers.psu_list_scrapers.NTPCTenderScraper",
+        "sheet_tab": "TendersData_NTPCSITE",
+        "enabled":   True,
+    },
+    {
+        "key":       "NGEL",
+        "name":      "NTPC Green Energy (NGEL)",
+        "base_url":  "https://www.ngel.in",
+        "scraper":   "scrapers.psu_list_scrapers.NGELScraper",
+        "sheet_tab": "TendersData_NGEL",
+        "enabled":   True,
+    },
+    {
+        "key":       "THDC",
+        "name":      "THDC India",
+        "base_url":  "https://thdc.co.in",
+        "scraper":   "scrapers.psu_list_scrapers.THDCScraper",
+        "sheet_tab": "TendersData_THDC",
+        "enabled":   True,
+    },
+    {
+        "key":       "PFCCL",
+        "name":      "PFC Consulting (TBCB)",
+        "base_url":  "https://www.pfcclindia.com",
+        "scraper":   "scrapers.psu_list_scrapers.PFCCLScraper",
+        "sheet_tab": "TendersData_PFCCL",
+        "enabled":   True,
+    },
+    # PowerGrid: added above as POWERGRID, reading only its last-7-days view.
 ]

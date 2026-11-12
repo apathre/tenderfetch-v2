@@ -52,6 +52,11 @@ CRON_TO_KEY = {
     "30 9 * * *": "JK",
     "0 10 * * *": "Jharkhand",
     "30 10 * * *": "Assam",
+    "0 11 * * *": "POWERGRID",
+    "30 11 * * *":"NTPCSITE",
+    "0 12 * * *": "NGEL",
+    "30 12 * * *":"THDC",
+    "0 13 * * *": "PFCCL",
 }
 
 

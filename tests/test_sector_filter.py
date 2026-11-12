@@ -68,6 +68,9 @@ MUST_PASS = [
     "Supply of 315 MVA power transformers",
     "Supply, erection and commissioning of 220kV GIS substation",
     "Supply of conductors for 400 kV transmission line",
+    "Request for Proposal Document for selection of Bidder as Transmission Service Provider "
+    "to establish Inter-State Transmission System for Evacuation of Power from Rajasthan REZ Ph-V",
+    "RfQ for selection of Bidder as TSP for 765 kV Ananthapuram-III Pooling Station",
     # land
     "Land acquisition for 1000 MW solar park",
     "Procurement of land for setting up of wind power project",
@@ -91,6 +94,7 @@ MUST_FAIL = [
     "Development of mobile application for citizen services",
     "Hydro test of water pipeline at treatment plant",
     "Purchase of microwave oven for canteen",
+    "Request for Proposal for engagement of consultant for office renovation",
     "",
 ]
 
