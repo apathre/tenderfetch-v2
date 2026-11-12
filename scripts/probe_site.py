@@ -41,7 +41,11 @@ def probe(driver, url):
         driver.get(url)
         time.sleep(6)
     except Exception as e:
-        print(f"  LOAD ERROR: {e}")
+        print(f"  LOAD ERROR: {str(e)[:200]}")
+        try:
+            driver.execute_script("window.stop();")
+        except Exception:
+            pass
         return
     soup = BeautifulSoup(driver.page_source, "html.parser")
     body = soup.get_text(" ", strip=True)
@@ -89,11 +93,30 @@ def probe(driver, url):
         print(f"  forms     : {[(f.get('id'), f.get('action')) for f in forms[:5]]}")
 
 
+def _fresh_driver():
+    d = get_driver(headless=True)
+    d.set_page_load_timeout(60)
+    return d
+
+
 def main(urls):
-    driver = get_driver(headless=True)
+    driver = _fresh_driver()
     try:
         for u in urls:
-            probe(driver, u)
+            try:
+                probe(driver, u)
+            except Exception as e:
+                print(f"  PROBE FAILED: {e}")
+            # a site that hangs can leave the driver session unusable;
+            # always continue the next URL on a clean browser
+            try:
+                driver.current_url
+            except Exception:
+                try:
+                    driver.quit()
+                except Exception:
+                    pass
+                driver = _fresh_driver()
     finally:
         driver.quit()
 
